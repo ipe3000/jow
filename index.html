@@ -75,6 +75,7 @@
     .collections{display:grid; gap:8px}
     .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
     .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
+    .playerHeader{font-size:11px; margin:0; padding:0}
     .cardsMini{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
     .runGroup{display:inline-flex; gap:4px; padding:3px 7px; border-radius:999px; background:rgba(148,163,184,.16); border:1px solid rgba(148,163,184,.35)}
     .runGroup .chip{padding:0; border:0; background:transparent}
@@ -1056,7 +1057,7 @@ function render(){
         .join("");
       return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${cards.length})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
     }).join("");
-    el.innerHTML=`<strong>${p.name}</strong> (${p.cards.length} carte)<div class='takenGrid'>${suitCols}</div>`;
+    el.innerHTML=`<div class='playerHeader'><strong>${p.name}</strong> (${p.cards.length} carte)</div><div class='takenGrid'>${suitCols}</div>`;
     col.appendChild(el);
   }
 
