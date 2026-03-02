@@ -184,6 +184,20 @@ let G=null;
 let aiTimer=null;
 let renderScheduled=false;
 
+const AI_BASE_BUDGET_MS=5000;
+
+function countRemainingCards(tableau){
+  let n=0;
+  for(const sl of tableau.slots) if(!sl.removed) n++;
+  return n;
+}
+function getAiThinkingBudgetMs(state){
+  const left=countRemainingCards(state.tableau);
+  if(left<=6) return 6500;
+  if(left<=10) return 5800;
+  return AI_BASE_BUDGET_MS;
+}
+
 function scheduleRender(){
   if(renderScheduled) return;
   renderScheduled=true;
@@ -690,10 +704,10 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.hLinks>=2) return 0;
-  if(f1.hLinks>=2) return 1;
-  if(f0.sw - f1.sw >= 7) return 0;
-  if(f1.sw - f0.sw >= 7) return 1;
+  if(f0.hLinks>=4) return 0;
+  if(f1.hLinks>=4) return 1;
+  if(f0.sw - f1.sw >= 8) return 0;
+  if(f1.sw - f0.sw >= 8) return 1;
   return null;
 }
 function flipNewSim(tableau,acc){
@@ -961,13 +975,15 @@ function selectMoveUcb(baseState,budgetMs=3000,aiPlayer=1){
 }
 function chooseActionWithOptionalJoker(){
   const base=cloneGameState();
-  const noJ=selectMoveUcb(base,2200,1);
+  const mainBudgetMs=getAiThinkingBudgetMs(base);
+  const noJ=selectMoveUcb(base,mainBudgetMs,1);
   const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
   if(!canJ || noJ.idx===null) return {useJoker:false,firstIdx:noJ.idx};
   const yesState=cloneState(base);
   yesState.players[yesState.current].joker=false;
   yesState.picksLeftThisTurn=2;
-  const yes=selectMoveUcb(yesState,700,1);
+  const jokerBudgetMs=Math.max(900,Math.round(mainBudgetMs*0.25));
+  const yes=selectMoveUcb(yesState,jokerBudgetMs,1);
   if(yes.idx!==null && yes.mean>noJ.mean+0.02) return {useJoker:true,firstIdx:yes.idx};
   return {useJoker:false,firstIdx:noJ.idx};
 }
@@ -991,7 +1007,8 @@ function maybeRunAiTurn(){
   if(!G.players[G.current].isAI) return;
   aiTimer=setTimeout(()=>{
     if(!G||G.ended||G.current!==1) return;
-    log("AI Monte Carlo sta pensando (3s)...");
+    const thinkingMs=getAiThinkingBudgetMs(G);
+    log(`AI Monte Carlo sta pensando (~${(thinkingMs/1000).toFixed(1)}s)...`);
     const idx=aiSelectMove();
     if(idx!==null) takeCard(idx);
   },120);
