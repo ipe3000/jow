@@ -85,6 +85,24 @@
     .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
     .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
     .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+    @media (max-width: 600px){
+      main{padding:8px; gap:8px}
+      .panel{border-radius:10px}
+      .bd{padding:7px}
+      .sidePanel .bd{display:flex; flex-direction:column; gap:6px; overflow:hidden}
+      .sidePanel .bd > .row{margin-bottom:0!important}
+      .sidePanel button{width:100%; padding:5px 10px; font-size:13px}
+      .status{gap:6px; font-size:12px}
+      .pill{padding:2px 6px; font-size:11px}
+      .collections{gap:6px; flex:1; min-height:0; overflow:auto}
+      .pbox{padding:6px}
+      .cardsMini{gap:4px; margin-top:4px}
+      .chip{padding:2px 6px; font-size:10px}
+      .takenGrid{gap:4px; margin-top:6px}
+      .takenCol{padding:5px}
+      .takenTitle{margin-bottom:3px}
+      .log{height:180px; padding:6px}
+    }
   </style>
 </head>
 <body>
