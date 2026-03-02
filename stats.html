@@ -61,10 +61,10 @@
 <script>
 (function(){
 const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-const DIAMOND_VP_AWARDS=[15,9,4];
-const MILITARY_VP=5;
+const DIAMOND_VP_AWARDS=[12,7,3];
+const MILITARY_VP=6;
 const TECHNOLOGY_VP_FOR_2=2;
-const TECHNOLOGY_VP_FOR_3=5;
+const TECHNOLOGY_VP_FOR_3=6;
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
 const TABLEAU_MODEL={ancient:[{faceDown:false,xs:[2,4]},{faceDown:true,xs:[1.5,2.5,3.5,4.5]},{faceDown:false,xs:[0,1,2,3,4,5,6]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[1,2,3,4,5]}],modern:[{faceDown:false,xs:[2,5]},{faceDown:true,xs:[1.5,2.5,3.5,4.5,5.5]},{faceDown:false,xs:[0,1,2,3,4,5,6,7]},{faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5,6.5]},{faceDown:false,xs:[1,2,3,4,5,6]}]};
