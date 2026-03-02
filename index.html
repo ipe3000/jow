@@ -1066,9 +1066,12 @@ function render(){
   const panelH=panel?.clientHeight||window.innerHeight;
   const availableH=Math.max(120,panelH-headerH-padY);
   const scale=Math.min(1,availableW/geom.width,availableH/geom.height);
+  const scaledHeight=geom.height*scale;
   t.style.width=geom.width+"px";
   t.style.height=geom.height+"px";
   t.style.transform=`scale(${scale})`;
+  wrap.style.height=`${scaledHeight}px`;
+  wrap.style.minHeight=`${scaledHeight}px`;
   t.innerHTML="";
   const acc=accessibility(G.tableau);
   for(let i=0;i<slots.length;i++){
