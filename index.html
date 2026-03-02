@@ -1057,18 +1057,17 @@ function render(){
     col.appendChild(el);
   }
 
-  const t=document.getElementById("tableau"); const wrap=t.parentElement; const panel=t.closest(".tableauPanel"); const headerH=panel?.querySelector(".hd")?.offsetHeight||0;
+  const t=document.getElementById("tableau"); const wrap=t.parentElement;
   const {slots,geom}=G.tableau;
   const wrapStyle=getComputedStyle(wrap);
   const padX=(parseFloat(wrapStyle.paddingLeft)||0)+(parseFloat(wrapStyle.paddingRight)||0);
-  const padY=(parseFloat(wrapStyle.paddingTop)||0)+(parseFloat(wrapStyle.paddingBottom)||0);
   const availableW=Math.max(200,wrap.clientWidth-padX);
-  const panelH=panel?.clientHeight||window.innerHeight;
-  const availableH=Math.max(120,panelH-headerH-padY);
-  const scale=Math.min(1,availableW/geom.width,availableH/geom.height);
+  const scale=Math.min(1,availableW/geom.width);
+  const scaledH=geom.height*scale;
   t.style.width=geom.width+"px";
   t.style.height=geom.height+"px";
   t.style.transform=`scale(${scale})`;
+  wrap.style.height=`${scaledH}px`;
   t.innerHTML="";
   const acc=accessibility(G.tableau);
   for(let i=0;i<slots.length;i++){
