@@ -155,10 +155,9 @@
 
 <script>
 const SUITS=["S","D","H","C"];
-const DIAMOND_VP_AWARDS=[12,7,3];
-const MILITARY_VP=6;
-const TECHNOLOGY_VP_FOR_2=2;
-const TECHNOLOGY_VP_FOR_3=6;
+const DIAMOND_VP_AWARDS=[10,6,3];
+const MILITARY_VP=5;
+const TECHNOLOGY_MAJORITY_VP=5;
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -382,10 +381,8 @@ function techSequenceCountFromMask(mask){
   dfs(0,0,0);
   return best;
 }
-function technologyVP(count){
-  if(count===2) return TECHNOLOGY_VP_FOR_2;
-  if(count===3) return TECHNOLOGY_VP_FOR_3;
-  return 0;
+function technologyVP(myCount,oppCount){
+  return myCount>oppCount?TECHNOLOGY_MAJORITY_VP:0;
 }
 function diamondAdjFromMask(mask){
   mask&=MASK13;
@@ -456,7 +453,7 @@ function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
-  const techVP=[technologyVP(tech0),technologyVP(tech1)];
+  const techVP=[technologyVP(tech0,tech1),technologyVP(tech1,tech0)];
   const food0=foodVP(p0), food1=foodVP(p1);
   const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
   const military=[0,0];
@@ -980,8 +977,8 @@ function scoreFor(S,i){
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
   vp[0]+=foodVP(a); vp[1]+=foodVP(b);
-  vp[0]+=technologyVP(tech[0]);
-  vp[1]+=technologyVP(tech[1]);
+  vp[0]+=technologyVP(tech[0],tech[1]);
+  vp[1]+=technologyVP(tech[1],tech[0]);
   if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
