@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -24,34 +24,34 @@
   <div class="app">
     <aside class="panel">
       <h1>Jokers of Wonders — Stats Lab</h1>
-      <p class="small">Simulatore Monte Carlo coerente con le regole di gioco, utile a board game designer per tuning bilanciamento (win-rate, condizioni di vittoria, peso delle categorie VP).</p>
+      <p class="small">Monte Carlo simulator aligned with game rules, useful for board game designers to tune balance (win rate, victory conditions, VP category weights).</p>
       <div class="controls">
-        <label>Numero partite <input id="games" type="number" min="1" max="10000" value="1000" /></label>
-        <label>Strategia AI A <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
-        <label>Strategia AI B <select id="aiStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
-        <label>Forza AI Monte Carlo (1-10) <input id="mcStrength" type="number" min="1" max="10" step="1" value="1" /></label>
-        <label>Parte per primo <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternato</option></select></label>
-        <button id="runBtn">Esegui simulazione</button>
-        <div id="status" class="small">Pronto.</div>
+        <label>Number of games <input id="games" type="number" min="1" max="10000" value="1000" /></label>
+        <label>AI A strategy <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>AI B strategy <select id="aiStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>Monte Carlo AI strength (1-10) <input id="mcStrength" type="number" min="1" max="10" step="1" value="1" /></label>
+        <label>Starting player <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternate</option></select></label>
+        <button id="runBtn">Run simulation</button>
+        <div id="status" class="small">Ready.</div>
       </div>
     </aside>
 
     <main class="panel">
       <div class="kpi">
-        <div class="card"><div class="k">Partite</div><div class="v" id="kGames">0</div></div>
+        <div class="card"><div class="k">Games</div><div class="v" id="kGames">0</div></div>
         <div class="card"><div class="k">Win rate AI A</div><div class="v" id="kAWin">0%</div></div>
         <div class="card"><div class="k">Win rate AI B</div><div class="v" id="kBWin">0%</div></div>
-        <div class="card"><div class="k">Pareggi</div><div class="v" id="kDraw">0%</div></div>
+        <div class="card"><div class="k">Draws</div><div class="v" id="kDraw">0%</div></div>
       </div>
 
       <div class="grid">
         <section class="card"><h3>Score summary</h3><table><thead><tr><th>Metric</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="scoreTable"></tbody></table></section>
-        <section class="card"><h3>Distribuzione margine VP (AI B - AI A)</h3><div id="marginHist" class="hist"></div></section>
+        <section class="card"><h3>VP margin distribution (AI B - AI A)</h3><div id="marginHist" class="hist"></div></section>
       </div>
 
       <div class="grid" style="margin-top:10px;">
-        <section class="card"><h3>Condizioni di vittoria</h3><table><thead><tr><th>Evento</th><th>Frequenza</th></tr></thead><tbody id="eventTable"></tbody></table></section>
-        <section class="card"><h3>Breakdown VP medio (regole jow)</h3><table><thead><tr><th>Categoria</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="vpTable"></tbody></table></section>
+        <section class="card"><h3>Victory conditions</h3><table><thead><tr><th>Event</th><th>Frequency</th></tr></thead><tbody id="eventTable"></tbody></table></section>
+        <section class="card"><h3>Average VP breakdown (JoW rules)</h3><table><thead><tr><th>Category</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="vpTable"></tbody></table></section>
       </div>
     </main>
   </div>
