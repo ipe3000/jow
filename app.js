@@ -426,6 +426,7 @@ function useJokerDouble(player=G.current){
 
 function showEndgameModal(sc,winner){
   const d=document.getElementById("modal");
+  d.classList.remove("modernSwapModal");
   const p0=G.players[0].name, p1=G.players[1].name;
   const rows=[
     {label:"Militare",a:sc.detail.military[0],b:sc.detail.military[1]},
@@ -491,16 +492,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
   }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
-    const isMobile=window.matchMedia("(max-width: 600px)").matches;
-    const acc=modernTableauPreview?accessibility(modernTableauPreview):[];
-    const openCards=modernTableauPreview
-      ? modernTableauPreview.slots
-        .filter((slot,i)=>acc[i] && !slot.removed && !slot.faceDown)
-        .map(slot=>slot.card)
-      : [];
-    const openCardsHtml=isMobile && openCards.length
-      ? `<div class='cardsMini'>${openCards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</div>`
-      : "";
+    d.classList.add("modernSwapModal");
 
     G.pendingSwapChoice={type:"modernSwap"};
     if(modernTableauPreview){
@@ -508,13 +500,14 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
       render();
     }
 
-    d.innerHTML=`<h3>Età Moderna</h3><p>Usi Wonder per iniziare tu?</p>${openCardsHtml}<div class='optRow'><button id='no'>No</button><button id='yes'>Sì</button></div>`;
+    d.innerHTML=`<h3>Età Moderna</h3><p>Usi Wonder per iniziare tu?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì</button></div>`;
     d.showModal();
     let settled=false;
     const settle=(value)=>{
       if(settled) return;
       settled=true;
       G.pendingSwapChoice=null;
+      d.classList.remove("modernSwapModal");
       resolve(value);
     };
     d.oncancel=()=>{settle(nextFirst);};
