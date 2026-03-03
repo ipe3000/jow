@@ -466,7 +466,13 @@ function takeCard(idx){
   log(`${pl.name} takes ${label(s.card)}.${f?` Reveals ${f} cards.`:""}`);
 
   const sup=checkSupremacy();
-  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} wins by ${sup.reason}.`); render(); return;}
+  if(sup){
+    G.ended=true;
+    log(`🏆 ${G.players[sup.winner].name} wins by ${sup.reason}.`);
+    showSupremacyModal(sup);
+    render();
+    return;
+  }
 
   if(G.age==="modern" && G.modernSwapStillAvailable) G.modernSwapStillAvailable=false;
   endTurnOrAge();
@@ -523,6 +529,20 @@ function showEndgameModal(sc,winner){
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
   d.querySelector("#closeEnd").onclick=()=>d.close();
+  d.showModal();
+}
+
+function showSupremacyModal({winner,reason}){
+  const d=document.getElementById("modal");
+  d.classList.remove("modernSwapModal");
+  d.innerHTML=`
+    <h3>Game Over</h3>
+    <p><strong>${G.players[winner].name}</strong> wins by supremacy.</p>
+    <p style='color:var(--muted);margin-top:8px'>Reason: ${reason}</p>
+    <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
+    <div class='optRow'><button id='closeSup'>Close</button></div>
+  `;
+  d.querySelector("#closeSup").onclick=()=>d.close();
   d.showModal();
 }
 
