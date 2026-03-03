@@ -460,7 +460,7 @@ function showEndgameModal(sc,winner){
   d.showModal();
 }
 
-function maybeModernSwap(nextFirst){
+function maybeModernSwap(nextFirst,modernTableauPreview=null){
   const second=1-nextFirst;
   const pl=G.players[second];
   G.modernSwapStillAvailable=true;
@@ -491,10 +491,35 @@ function maybeModernSwap(nextFirst){
   }
   return new Promise(resolve=>{
     const d=document.getElementById("modal");
-    d.innerHTML=`<h3>Inizio Età Moderna</h3><p>${pl.name} sarebbe secondo. Vuole costruire Wonder (Seize Initiative) per diventare primo?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì, costruisci Wonder</button></div>`;
+    const isMobile=window.matchMedia("(max-width: 600px)").matches;
+    const acc=modernTableauPreview?accessibility(modernTableauPreview):[];
+    const openCards=modernTableauPreview
+      ? modernTableauPreview.slots
+        .filter((slot,i)=>acc[i] && !slot.removed && !slot.faceDown)
+        .map(slot=>slot.card)
+      : [];
+    const openCardsHtml=isMobile && openCards.length
+      ? `<div class='cardsMini'>${openCards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</div>`
+      : "";
+
+    G.pendingSwapChoice={type:"modernSwap"};
+    if(modernTableauPreview){
+      G.tableau=modernTableauPreview;
+      render();
+    }
+
+    d.innerHTML=`<h3>Età Moderna</h3><p>Usi Wonder per iniziare tu?</p>${openCardsHtml}<div class='optRow'><button id='no'>No</button><button id='yes'>Sì</button></div>`;
     d.showModal();
-    d.querySelector("#no").onclick=()=>{d.close();resolve(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`); resolve(second);};
+    let settled=false;
+    const settle=(value)=>{
+      if(settled) return;
+      settled=true;
+      G.pendingSwapChoice=null;
+      resolve(value);
+    };
+    d.oncancel=()=>{settle(nextFirst);};
+    d.querySelector("#no").onclick=()=>{d.close(); settle(nextFirst);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`); settle(second);};
   });
 }
 
@@ -922,9 +947,12 @@ async function endTurnOrAge(){
   const slots=G.tableau.slots;
   if(slots.every(s=>s.removed)){
     if(G.age==="ancient"){
-      const start=await maybeModernSwap(G.nextAgeFirst);
+      const modernDeck=G.decks.modern.slice();
+      const modernTableau=buildTableau("modern",modernDeck);
+      const start=await maybeModernSwap(G.nextAgeFirst,modernTableau);
       G.age="modern";
-      G.tableau=buildTableau("modern",G.decks.modern);
+      G.decks.modern=modernDeck;
+      G.tableau=modernTableau;
       G.current=start;
       G.picksLeftThisTurn=1;
       log(`Fine Età Antica. Inizia Età Moderna con ${G.players[G.current].name}.`);
