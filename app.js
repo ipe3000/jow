@@ -30,9 +30,13 @@ let renderScheduled=false;
 
 const AI_BASE_BUDGET_MS=5000;
 
+function isSlotGone(slot){
+  return !!(slot.removed || slot.pendingAIPick);
+}
+
 function countRemainingCards(tableau){
   let n=0;
-  for(const sl of tableau.slots) if(!sl.removed) n++;
+  for(const sl of tableau.slots) if(!isSlotGone(sl)) n++;
   return n;
 }
 function getAiThinkingBudgetMs(state){
@@ -201,21 +205,32 @@ function buildTableau(age,deck){
   for(const p of geom.pos){
     const card=deck.pop();
     const faceDown=model[p.row].faceDown;
-    slots.push({card,removed:false,faceDown,row:p.row,col:p.col,gridX:p.gridX,x:p.x,y:p.y});
+    slots.push({card,removed:false,pendingAIPick:false,faceDown,row:p.row,col:p.col,gridX:p.gridX,x:p.x,y:p.y});
   }
   return {slots,geom,coveredBy:covering,coveredByRev:buildCoveredBy(covering)};
 }
 function accessibility(tableau){
   const {slots,coveredBy}=tableau;
   return slots.map((s,i)=>{
-    if(s.removed) return false;
-    return !(coveredBy[i]||[]).some(cIdx=>!slots[cIdx].removed);
+    if(isSlotGone(s)) return false;
+    return !(coveredBy[i]||[]).some(cIdx=>!isSlotGone(slots[cIdx]));
   });
 }
 function flipNew(slots,acc){
   let f=0;
-  for(let i=0;i<slots.length;i++) if(!slots[i].removed && slots[i].faceDown && acc[i]){slots[i].faceDown=false; f++;}
+  for(let i=0;i<slots.length;i++) if(!isSlotGone(slots[i]) && slots[i].faceDown && acc[i]){slots[i].faceDown=false; f++;}
   return f;
+}
+
+function commitPendingAIPicks(){
+  if(!G?.pendingAIRemovals?.length) return;
+  for(const idx of G.pendingAIRemovals){
+    const slot=G.tableau.slots[idx];
+    if(!slot || !slot.pendingAIPick) continue;
+    slot.pendingAIPick=false;
+    slot.removed=true;
+  }
+  G.pendingAIRemovals=[];
 }
 function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
 function popcount13(x){ x>>>=0; let c=0; while(x){ x&=x-1; c++; } return c; }
@@ -378,7 +393,8 @@ function newGame(){
       {name:"Giocatore 1",cards:[],joker:true,isAI:false,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},
       {name:"Giocatore 2",cards:[],joker:true,isAI:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}
     ],
-    lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null
+    lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null,
+    pendingAIRemovals:[]
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
   log(`Nuova partita. Inizia ${G.players[G.current].name}.`);
@@ -394,9 +410,18 @@ function takeCard(idx){
   if(G.ended) return;
   const slots=G.tableau.slots, accBefore=accessibility(G.tableau);
   const s=slots[idx];
-  if(!accBefore[idx]||s.faceDown||s.removed) return;
-  s.removed=true;
+  if(!accBefore[idx]||s.faceDown||isSlotGone(s)) return;
+
   const pl=G.players[G.current];
+  if(!pl.isAI && G.pendingAIRemovals.length) commitPendingAIPicks();
+
+  if(pl.isAI){
+    s.pendingAIPick=true;
+    if(!G.pendingAIRemovals.includes(idx)) G.pendingAIRemovals.push(idx);
+  }else{
+    s.removed=true;
+  }
+
   pl.cards.push(s.card);
   updateFeat(pl.feat,s.card);
   G.lastTaken={player:G.current,card:s.card};
@@ -528,7 +553,7 @@ function legalOpenMoves(tableau){
   const moves=[];
   for(let i=0;i<tableau.slots.length;i++){
     const sl=tableau.slots[i];
-    if(acc[i] && !sl.removed && !sl.faceDown) moves.push(i);
+    if(acc[i] && !isSlotGone(sl) && !sl.faceDown) moves.push(i);
   }
   return moves;
 }
@@ -546,7 +571,11 @@ function ucbSelect(stats,total,c=0.9){
 
 function cloneGameState(){
   const simTableau={
-    slots:G.tableau.slots.map(s=>({...s})),
+    slots:G.tableau.slots.map(s=>({
+      ...s,
+      removed:!!(s.removed||s.pendingAIPick),
+      pendingAIPick:false
+    })),
     coveredBy:G.tableau.coveredBy,
     coveredByRev:G.tableau.coveredByRev
   };
@@ -938,7 +967,7 @@ function maybeRunAiTurn(){
 
 async function endTurnOrAge(){
   const slots=G.tableau.slots;
-  if(slots.every(s=>s.removed)){
+  if(slots.every(s=>isSlotGone(s))){
     if(G.age==="ancient"){
       const modernDeck=G.decks.modern.slice();
       const modernTableau=buildTableau("modern",modernDeck);
@@ -1025,9 +1054,9 @@ function render(){
   for(let i=0;i<slots.length;i++){
     const s=slots[i];
     const e=document.createElement("div");
-    const hasChildren=(G.tableau.coveredBy[i]||[]).some(c=>!slots[c].removed);
-    const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!slots[p].removed);
-    e.className=`card ${s.removed?"removed":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!s.removed?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!s.removed?"open accessible":""} ${!acc[i]&&!s.removed&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
+    const hasChildren=(G.tableau.coveredBy[i]||[]).some(c=>!isSlotGone(slots[c]));
+    const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!isSlotGone(slots[p]));
+    e.className=`card ${s.removed?"removed":""} ${s.pendingAIPick?"aiPickedPreview":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!isSlotGone(s)?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!isSlotGone(s)?"open accessible":""} ${!acc[i]&&!isSlotGone(s)&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
     e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
     e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='small'>${SUIT_ABBR[s.card.suit]||SUIT_NAME[s.card.suit]}</div><div class='cornerL'></div><div class='cornerR'></div><div class='big'>${label(s.card)}</div>`;
     e.onclick=()=>takeCard(i);
