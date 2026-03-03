@@ -176,7 +176,12 @@ function modernOpeningSwingScore(S,startPlayer){
  C.age="modern";
  C.current=startPlayer;
  C.picksLeftThisTurn=1;
- C.tableau=buildTableau("modern",C.decks.modern);
+ const hasReadyModernTableau=
+  C.tableau &&
+  Array.isArray(C.tableau.slots) &&
+  C.tableau.slots.length===TABLEAU_MODEL.modern.reduce((n,row)=>n+row.xs.length,0) &&
+  C.tableau.slots.every(s=>s && s.card);
+ if(!hasReadyModernTableau) C.tableau=buildTableau("modern",C.decks.modern);
 
  const openerMoves=legalMoves(C);
  if(!openerMoves.length) return 0;
