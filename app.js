@@ -401,27 +401,37 @@ function newGame(firstPlayer=null){
   render();
 }
 
-function promptNewGameStart(){
+function promptChooseStarter({
+  title="New Game",
+  showConfirmText=true,
+  showCancel=true
+}={}){
   return new Promise(resolve=>{
     const d=document.getElementById("newGameDialog");
+    const confirmLine=showConfirmText?"<p>Sicuro di iniziare una nuova partita?</p>":"";
+    const cancelRow=showCancel?`<div class='optRow'>
+        <button id='newStartCancel'>Annulla</button>
+      </div>`:"";
     d.innerHTML=`
-      <h3>New Game</h3>
-      <p>Sicuro di iniziare una nuova partita?</p>
+      <h3>${title}</h3>
+      ${confirmLine}
       <p>Scegli chi inizia:</p>
       <div class='optRow'>
         <button id='newStartHuman' class='primary'>YOU start</button>
         <button id='newStartAi'>AI starts</button>
       </div>
-      <div class='optRow'>
-        <button id='newStartCancel'>Annulla</button>
-      </div>
+      ${cancelRow}
     `;
     if(!d.open) d.showModal();
     const close=(choice=null)=>{ if(d.open) d.close(); resolve(choice); };
     d.querySelector("#newStartHuman").onclick=()=>close(0);
     d.querySelector("#newStartAi").onclick=()=>close(1);
-    d.querySelector("#newStartCancel").onclick=()=>close(null);
-    d.oncancel=e=>{ e.preventDefault(); close(null); };
+    const cancelBtn=d.querySelector("#newStartCancel");
+    if(cancelBtn) cancelBtn.onclick=()=>close(null);
+    d.oncancel=e=>{
+      e.preventDefault();
+      if(showCancel) close(null);
+    };
   });
 }
 
@@ -1114,9 +1124,22 @@ if(document.fonts?.ready){
 }
 
 document.getElementById("newGameBtn").onclick=async()=>{
-  const first=await promptNewGameStart();
+  const first=await promptChooseStarter();
   if(first===null) return;
   newGame(first);
 };
 document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
-newGame();
+
+window.addEventListener("DOMContentLoaded",async()=>{
+  // Prepara subito tutta la UI (tableau/collector/log) dietro al popup iniziale.
+  // Usiamo temporaneamente P1 come starter, poi riallineiamo allo starter scelto.
+  newGame(0);
+
+  const first=await promptChooseStarter({
+    title:"Nuova partita",
+    showConfirmText:false,
+    showCancel:false
+  });
+
+  if(first===1) newGame(1);
+});
