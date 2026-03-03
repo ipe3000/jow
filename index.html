@@ -625,7 +625,8 @@ function maybeModernSwap(nextFirst){
     swapState.modernSwapStillAvailable=true;
     const evNo=estimatePolicyEV(noSwapState,1,120);
     const evSwap=estimatePolicyEV(swapState,1,120);
-    if(evSwap>evNo+0.03){
+    const turn1Swing=evaluateModernTurnOneSwing(cloneState(noSwapState),nextFirst,1);
+    if((evSwap-evNo) + turn1Swing*0.12 > 0.03){
       pl.joker=false;
       log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`);
       return Promise.resolve(second);
@@ -646,6 +647,16 @@ function aiSelectMove(){
   if(!decision) return null;
   if(decision.useJoker) useJokerDouble(1);
   return decision.firstIdx;
+}
+
+function legalOpenMoves(tableau){
+  const acc=accessibility(tableau);
+  const moves=[];
+  for(let i=0;i<tableau.slots.length;i++){
+    const sl=tableau.slots[i];
+    if(acc[i] && !sl.removed && !sl.faceDown) moves.push(i);
+  }
+  return moves;
 }
 
 function ucbSelect(stats,total,c=0.9){
@@ -849,11 +860,41 @@ function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
 
   const evNo=estimatePolicyEV(noSwap,aiPlayer,16);
   const evSwap=estimatePolicyEV(swap,aiPlayer,16);
-  if(evSwap>evNo+0.03){
+  const turn1Swing=evaluateModernTurnOneSwing(S,nextFirst,aiPlayer);
+  if((evSwap-evNo) + turn1Swing*0.12 > 0.03){
     S.players[second].joker=false;
     return second;
   }
   return nextFirst;
+}
+function bestGreedyMoveForPlayer(S,player){
+  const options=legalMovesSim(S);
+  if(!options.length) return {idx:null,val:0};
+  let bestIdx=options[0],bestVal=-Infinity;
+  for(const idx of options){
+    const v=cheapEvalTake(S,player,idx);
+    if(v>bestVal){bestVal=v; bestIdx=idx;}
+  }
+  return {idx:bestIdx,val:bestVal};
+}
+function evaluateModernTurnOneSwing(baseState,nextFirst,aiPlayer=1){
+  const second=1-nextFirst;
+  const aiAsFirst=cloneState(baseState);
+  aiAsFirst.age="modern";
+  aiAsFirst.current=second;
+  aiAsFirst.picksLeftThisTurn=1;
+  aiAsFirst.tableau=buildTableau("modern",aiAsFirst.decks.modern.slice());
+  const firstPick=bestGreedyMoveForPlayer(aiAsFirst,aiPlayer).val;
+
+  const aiAsSecond=cloneState(baseState);
+  aiAsSecond.age="modern";
+  aiAsSecond.current=nextFirst;
+  aiAsSecond.picksLeftThisTurn=1;
+  aiAsSecond.tableau=buildTableau("modern",aiAsSecond.decks.modern.slice());
+  const opener=bestGreedyMoveForPlayer(aiAsSecond,nextFirst);
+  if(opener.idx!==null) applyTakeSim(aiAsSecond,opener.idx);
+  const reply=bestGreedyMoveForPlayer(aiAsSecond,aiPlayer).val;
+  return firstPick-reply;
 }
 function advanceAgeSim(S){
   if(S.age==="ancient"){
@@ -975,6 +1016,8 @@ function selectMoveUcb(baseState,budgetMs=3000,aiPlayer=1){
 }
 function chooseActionWithOptionalJoker(){
   const base=cloneGameState();
+  const forced=legalMovesSim(base);
+  if(forced.length===1) return {useJoker:false,firstIdx:forced[0]};
   const mainBudgetMs=getAiThinkingBudgetMs(base);
   const noJ=selectMoveUcb(base,mainBudgetMs,1);
   const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
@@ -1005,6 +1048,11 @@ function maybeRunAiTurn(){
   if(aiTimer){clearTimeout(aiTimer); aiTimer=null;}
   if(!G||G.ended||G.pendingSwapChoice) return;
   if(!G.players[G.current].isAI) return;
+  const forced=legalOpenMoves(G.tableau);
+  if(forced.length===1){
+    takeCard(forced[0]);
+    return;
+  }
   aiTimer=setTimeout(()=>{
     if(!G||G.ended||G.current!==1) return;
     const thinkingMs=getAiThinkingBudgetMs(G);
