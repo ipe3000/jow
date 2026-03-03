@@ -110,7 +110,10 @@
     .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
     .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
     .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
-    .controlRow{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+    .controlRow{display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch}
+    .controlRow .pill{padding:2px 6px; font-size:11px}
+    .controlRow button{padding:3px 8px; font-size:11px; border-radius:8px; line-height:1.1}
+    .controlRow > *{flex:0 0 auto}
     @media (max-width: 600px){
       main{padding:8px; gap:8px}
       .panel{border-radius:10px}
@@ -118,6 +121,9 @@
       .sidePanel .bd{display:flex; flex-direction:column; gap:6px; overflow:visible}
       .sidePanel .bd > .row{margin-bottom:0!important}
       .sidePanel button{width:100%; padding:5px 10px; font-size:13px}
+      .sidePanel .controlRow{gap:4px}
+      .sidePanel .controlRow button{width:auto; white-space:nowrap; padding:3px 7px; font-size:11px}
+      .sidePanel .controlRow .pill{padding:2px 5px; font-size:10px}
       .status{gap:6px; font-size:12px}
       .pill{padding:2px 6px; font-size:11px}
       .collections{gap:6px; flex:none; min-height:auto; overflow:visible}
@@ -148,7 +154,7 @@
     <div class="bd">
       <div class="row controlRow" style="margin-bottom:4px">
         <span class="pill turnTag" id="sideTurnPill">Turn: HU</span>
-        <button id="useJokerBtn">Build Wonder: Extra Turn</button>
+        <button id="useJokerBtn">Extra Turn</button>
         <button class="primary" id="newGameBtn">New Game</button>
       </div>
       <div class="status" id="statusGrid"></div>
