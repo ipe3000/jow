@@ -374,10 +374,10 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.hLinks>=4) return {winner:0,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
-  if(f1.hLinks>=4) return {winner:1,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
-  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
+  if(f0.hLinks>=4) return {winner:0,reason:"Technological Supremacy (>=4 Technological Sequences)"};
+  if(f1.hLinks>=4) return {winner:1,reason:"Technological Supremacy (>=4 Technological Sequences)"};
+  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Military Supremacy (>=7 Swords lead)"};
+  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Military Supremacy (>=7 Swords lead)"};
   return null;
 }
 
@@ -390,14 +390,14 @@ function newGame(firstPlayer=null){
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
     players:[
-      {name:"Giocatore 1",cards:[],joker:true,isAI:false,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},
-      {name:"Giocatore 2",cards:[],joker:true,isAI:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}
+      {name:"Player 1",cards:[],joker:true,isAI:false,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},
+      {name:"Player 2",cards:[],joker:true,isAI:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}
     ],
     lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null,
     pendingAIRemovals:[]
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
-  log(`Nuova partita. Inizia ${G.players[G.current].name}.`);
+  log(`New game. ${G.players[G.current].name} starts.`);
   render();
 }
 
@@ -408,14 +408,14 @@ function promptChooseStarter({
 }={}){
   return new Promise(resolve=>{
     const d=document.getElementById("newGameDialog");
-    const confirmLine=showConfirmText?"<p>Sicuro di iniziare una nuova partita?</p>":"";
+    const confirmLine=showConfirmText?"<p>Are you sure you want to start a new game?</p>":"";
     const cancelRow=showCancel?`<div class='optRow'>
-        <button id='newStartCancel'>Annulla</button>
+        <button id='newStartCancel'>Cancel</button>
       </div>`:"";
     d.innerHTML=`
       <h3>${title}</h3>
       ${confirmLine}
-      <p>Scegli chi inizia:</p>
+      <p>Choose who starts:</p>
       <div class='optRow'>
         <button id='newStartHuman' class='primary'>YOU start</button>
         <button id='newStartAi'>AI starts</button>
@@ -463,10 +463,10 @@ function takeCard(idx){
   G.picksLeftThisTurn=Math.max(0,G.picksLeftThisTurn-1);
   const accAfter=accessibility(G.tableau);
   const f=flipNew(slots,accAfter);
-  log(`${pl.name} prende ${label(s.card)}.${f?` Rivela ${f} carte.`:""}`);
+  log(`${pl.name} takes ${label(s.card)}.${f?` Reveals ${f} cards.`:""}`);
 
   const sup=checkSupremacy();
-  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} vince per ${sup.reason}.`); render(); return;}
+  if(sup){G.ended=true; log(`🏆 ${G.players[sup.winner].name} wins by ${sup.reason}.`); render(); return;}
 
   if(G.age==="modern" && G.modernSwapStillAvailable) G.modernSwapStillAvailable=false;
   endTurnOrAge();
@@ -479,7 +479,7 @@ function useJokerDouble(player=G.current){
   if(!canUseJokerDouble(player)) return false;
   G.players[player].joker=false;
   G.picksLeftThisTurn=2;
-  log(`${G.players[player].name} costruisce Wonder (Extra Turn): 2 prese in questo turno.`);
+  log(`${G.players[player].name} builds Wonder (Extra Turn): 2 picks this turn.`);
   return true;
 }
 
@@ -488,18 +488,18 @@ function showEndgameModal(sc,winner){
   d.classList.remove("modernSwapModal");
   const p0=G.players[0].name, p1=G.players[1].name;
   const rows=[
-    {label:"Militare",a:sc.detail.military[0],b:sc.detail.military[1]},
-    {label:"Cibo",a:sc.detail.food[0],b:sc.detail.food[1]},
-    {label:"Tecnologia",a:sc.detail.techVP[0],b:sc.detail.techVP[1]},
-    {label:"Cultura",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Calamità",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+    {label:"Military",a:sc.detail.military[0],b:sc.detail.military[1]},
+    {label:"Food",a:sc.detail.food[0],b:sc.detail.food[1]},
+    {label:"Technology",a:sc.detail.techVP[0],b:sc.detail.techVP[1]},
+    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]},
+    {label:"Calamity",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
-    ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequenza ${x.length})`).join("<br>")
-    : "Nessun bonus Cultura assegnato.";
+    ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
+    : "No Culture bonus assigned.";
   d.innerHTML=`
-    <h3>Fine partita</h3>
-    <p>Riepilogo punti vittoria:</p>
+    <h3>Game Over</h3>
+    <p>Victory points summary:</p>
     <table class='endSummary'>
       <thead>
         <tr><th></th><th>P1</th><th>P2</th></tr>
@@ -508,13 +508,13 @@ function showEndgameModal(sc,winner){
         ${rows.map(r=>`<tr><td>${r.label}</td><td><strong>${r.a}</strong></td><td><strong>${r.b}</strong></td></tr>`).join("")}
       </tbody>
       <tfoot>
-        <tr class='tot'><td>Totale VP</td><td><strong>${sc.vp[0]}</strong></td><td><strong>${sc.vp[1]}</strong></td></tr>
+        <tr class='tot'><td>Total VP</td><td><strong>${sc.vp[0]}</strong></td><td><strong>${sc.vp[1]}</strong></td></tr>
       </tfoot>
     </table>
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus Cultura: ${cultureText}</p>
-    <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Pareggio" : `🏆 Vince ${G.players[winner].name}`}</div>
-    <div class='optRow'><button id='closeEnd'>Chiudi</button></div>
+    <p style='color:var(--muted);margin-top:8px'>Bonus Culture: ${cultureText}</p>
+    <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Draw" : `🏆 ${G.players[winner].name} wins`}</div>
+    <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
   d.querySelector("#closeEnd").onclick=()=>d.close();
   d.showModal();
@@ -544,7 +544,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     const turn1Swing=evaluateModernTurnOneSwing(cloneState(noSwapState),nextFirst,1);
     if((evSwap-evNo) + turn1Swing*0.12 > 0.03){
       pl.joker=false;
-      log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`);
+      log(`${pl.name} builds Wonder (Seize Initiative) and goes first in the Modern Age.`);
       return Promise.resolve(second);
     }
     return Promise.resolve(nextFirst);
@@ -559,7 +559,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
       render();
     }
 
-    d.innerHTML=`<h3>Età Moderna</h3><p>Usi Wonder per iniziare tu?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Sì</button></div>`;
+    d.innerHTML=`<h3>Modern Age</h3><p>Use Wonder to start first?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Yes</button></div>`;
     d.showModal();
     let settled=false;
     const settle=(value)=>{
@@ -571,7 +571,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     };
     d.oncancel=()=>{settle(nextFirst);};
     d.querySelector("#no").onclick=()=>{d.close(); settle(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} costruisce Wonder (Seize Initiative) ed è primo nell'Età Moderna.`); settle(second);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} builds Wonder (Seize Initiative) and goes first in the Modern Age.`); settle(second);};
   });
 }
 
@@ -1011,14 +1011,14 @@ async function endTurnOrAge(){
       G.tableau=modernTableau;
       G.current=start;
       G.picksLeftThisTurn=1;
-      log(`Fine Età Antica. Inizia Età Moderna con ${G.players[G.current].name}.`);
+      log(`Ancient Age ends. Modern Age starts with ${G.players[G.current].name}.`);
       render(); return;
     }
     G.ended=true;
     const sc=scoreGame();
     const w=sc.vp[0]===sc.vp[1]?null:(sc.vp[0]>sc.vp[1]?0:1);
-    log(`Fine partita. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
-    log(w===null?"Pareggio." : `🏆 Vince ${G.players[w].name} ai punti.`);
+    log(`Game over. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
+    log(w===null?"Draw." : `🏆 ${G.players[w].name} wins on points.`);
     showEndgameModal(sc,w);
     render(); return;
   }
@@ -1031,7 +1031,7 @@ async function endTurnOrAge(){
 
 function render(){
   if(!G) return;
-  document.getElementById("agePill").textContent=`Età: ${G.age==="ancient"?"Antica":"Moderna"}`;
+  document.getElementById("agePill").textContent=`Age: ${G.age==="ancient"?"Ancient":"Modern"}`;
   const sideTurn=document.getElementById("sideTurnPill");
   if(G.ended){
     sideTurn.textContent="Turn: -";
@@ -1045,7 +1045,7 @@ function render(){
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
   const militaryLead=sw[1]-sw[0];
-  const supremacyLabel=militaryLead===0?"Pari":(militaryLead>0?"AI":"PL");
+  const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"PL");
   sg.innerHTML=`<div class='pill'>Tech Seq.: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
@@ -1075,7 +1075,7 @@ function render(){
         .join("");
       return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${suitMetric[s]})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
     }).join("");
-    el.innerHTML=`<div class='playerHeader'><strong>${p.name}</strong> (${p.cards.length} carte)</div><div class='takenGrid'>${suitCols}</div>`;
+    el.innerHTML=`<div class='playerHeader'><strong>${p.name}</strong> (${p.cards.length} cards)</div><div class='takenGrid'>${suitCols}</div>`;
     col.appendChild(el);
   }
 
@@ -1136,7 +1136,7 @@ window.addEventListener("DOMContentLoaded",async()=>{
   newGame(0);
 
   const first=await promptChooseStarter({
-    title:"Nuova partita",
+    title:"New game",
     showConfirmText:false,
     showCancel:false
   });
