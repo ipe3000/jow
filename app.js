@@ -1168,6 +1168,14 @@ function maybeRunAiTurn(){
 }
 
 async function endTurnOrAge(){
+  // If the AI had previewed picks, materialize them before checking age end.
+  // This keeps Ancient→Modern transition logic consistent even on edge turns.
+  if(G.pendingAIRemovals.length){
+    commitPendingAIPicks();
+    const accAfterCommit=accessibility(G.tableau);
+    flipNew(G.tableau.slots,accAfterCommit);
+  }
+
   const slots=G.tableau.slots;
   if(slots.every(s=>isSlotGone(s))){
     if(G.age==="ancient"){
@@ -1177,6 +1185,7 @@ async function endTurnOrAge(){
       G.age="modern";
       G.decks.modern=modernDeck;
       G.tableau=modernTableau;
+      G.pendingAIRemovals=[];
       G.current=start;
       G.picksLeftThisTurn=1;
       log(`Ancient Age ends. Modern Age starts with ${G.players[G.current].name}.`);
