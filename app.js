@@ -778,8 +778,14 @@ function shouldUseJokerInPlayout(S){
     const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
   }
   if(moves.length<2) return false;
-  const vals=moves.map(idx=>cheapEvalTake(S,S.current,idx)).sort((a,b)=>b-a);
-  return vals[1]>0.6;
+  const player=S.current;
+  if(canWinNowWithTwoPicksSim(S,player,moves,2)!==null) return true;
+  if(S.age==="ancient" && remainingCardsThisAgeSim(S)>6) return false;
+  const vals=moves.map(idx=>cheapEvalTake(S,player,idx)).sort((a,b)=>b-a);
+  const single=vals[0];
+  const two=vals[0]+0.85*vals[1];
+  const reserveBias=S.age==="ancient"?0.35:0.15;
+  return two>single+(0.55+reserveBias);
 }
 function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
   const second=1-nextFirst;
@@ -957,20 +963,140 @@ function selectMoveUcb(baseState,budgetMs=3000,aiPlayer=1){
   }
   return {idx:best,mean:bestVal};
 }
+function remainingCardsThisAgeSim(S){
+  let n=0;
+  for(const sl of S.tableau.slots) if(!sl.removed) n++;
+  return n;
+}
+function jokerDecisionThresholdSim(S,player=S.current){
+  const left=remainingCardsThisAgeSim(S);
+  let threshold=0.06;
+  if(S.age==="ancient"){
+    if(left>12) threshold=0.09;
+    else if(left>7) threshold=0.07;
+    else threshold=0.05;
+    const t=Math.min(1,Math.max(0,left/18));
+    const second=1-S.nextAgeFirst;
+    threshold+=0.03+0.04*t;
+    if(player===second) threshold+=0.02+0.03*t;
+  }else{
+    threshold=left>10?0.07:0.04;
+  }
+  return threshold;
+}
+function canWinNowWithOnePickSim(S,player=S.current,moves=legalMovesSim(S)){
+  for(const idx of moves){
+    const C=cloneState(S);
+    C.current=player;
+    C.picksLeftThisTurn=1;
+    applyTakeSim(C,idx);
+    if(C.ended && C.winner===player) return idx;
+  }
+  return null;
+}
+function canWinNowWithTwoPicksSim(S,player=S.current,moves=legalMovesSim(S),firstCap=4){
+  if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
+  const firstCand=moves
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .slice(0,Math.min(firstCap,moves.length));
+  for(const {i:first} of firstCand){
+    const C=cloneState(S);
+    C.current=player;
+    C.players[player].joker=false;
+    C.picksLeftThisTurn=2;
+    applyTakeSim(C,first);
+    if(C.ended && C.winner===player) return first;
+    const m2=legalMovesSim(C);
+    for(const second of m2){
+      const D=cloneState(C);
+      applyTakeSim(D,second);
+      if(D.ended && D.winner===player) return first;
+    }
+  }
+  return null;
+}
+function opponentCanWinImmediatelySim(S,opponent){
+  const T=cloneState(S);
+  T.current=opponent;
+  T.picksLeftThisTurn=1;
+  if(canWinNowWithOnePickSim(T,opponent)!==null) return true;
+  if(T.players[opponent].joker && canWinNowWithTwoPicksSim(T,opponent,legalMovesSim(T),3)!==null) return true;
+  return false;
+}
+function findSafeSingleMoveSim(S,player=S.current){
+  const moves=legalMovesSim(S)
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .map(x=>x.i);
+  for(const idx of moves){
+    const C=cloneState(S);
+    C.current=player;
+    C.picksLeftThisTurn=1;
+    applyTakeSim(C,idx);
+    if(C.ended && C.winner===player) return idx;
+    if(!opponentCanWinImmediatelySim(C,1-player)) return idx;
+  }
+  return null;
+}
+function findSafeJokerFirstMoveSim(S,player=S.current){
+  if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
+  const firstMoves=legalMovesSim(S)
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .slice(0,4)
+    .map(x=>x.i);
+  for(const first of firstMoves){
+    const C=cloneState(S);
+    C.current=player;
+    C.players[player].joker=false;
+    C.picksLeftThisTurn=2;
+    applyTakeSim(C,first);
+    if(C.ended && C.winner===player) return first;
+    const secondMoves=legalMovesSim(C)
+      .map(i=>({i,v:cheapEvalTake(C,player,i)}))
+      .sort((a,b)=>b.v-a.v)
+      .slice(0,4)
+      .map(x=>x.i);
+    for(const second of secondMoves){
+      const D=cloneState(C);
+      applyTakeSim(D,second);
+      if(D.ended && D.winner===player) return first;
+      if(!opponentCanWinImmediatelySim(D,1-player)) return first;
+    }
+  }
+  return null;
+}
 function chooseActionWithOptionalJoker(){
   const base=cloneGameState();
   const forced=legalMovesSim(base);
   if(forced.length===1) return {useJoker:false,firstIdx:forced[0]};
+  const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
+
+  const winNoJ=canWinNowWithOnePickSim(base,base.current,forced);
+  if(winNoJ!==null) return {useJoker:false,firstIdx:winNoJ};
+
+  if(canJ){
+    const winWithJ=canWinNowWithTwoPicksSim(base,base.current,forced,4);
+    if(winWithJ!==null) return {useJoker:true,firstIdx:winWithJ};
+
+    const safeNoJ=findSafeSingleMoveSim(base,base.current);
+    if(safeNoJ===null){
+      const safeWithJ=findSafeJokerFirstMoveSim(base,base.current);
+      if(safeWithJ!==null) return {useJoker:true,firstIdx:safeWithJ};
+    }
+  }
+
   const mainBudgetMs=getAiThinkingBudgetMs(base);
   const noJ=selectMoveUcb(base,mainBudgetMs,1);
-  const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
   if(!canJ || noJ.idx===null) return {useJoker:false,firstIdx:noJ.idx};
   const yesState=cloneState(base);
   yesState.players[yesState.current].joker=false;
   yesState.picksLeftThisTurn=2;
-  const jokerBudgetMs=Math.max(900,Math.round(mainBudgetMs*0.25));
+  const jokerBudgetMs=Math.max(900,Math.round(mainBudgetMs*0.4));
   const yes=selectMoveUcb(yesState,jokerBudgetMs,1);
-  if(yes.idx!==null && yes.mean>noJ.mean+0.02) return {useJoker:true,firstIdx:yes.idx};
+  const threshold=jokerDecisionThresholdSim(base,base.current);
+  if(yes.idx!==null && yes.mean>noJ.mean+threshold) return {useJoker:true,firstIdx:yes.idx};
   return {useJoker:false,firstIdx:noJ.idx};
 }
 function scoreFor(S,i){

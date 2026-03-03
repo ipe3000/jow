@@ -168,7 +168,7 @@ function choosePlayoutMove(S,eps=0.2){
  if(Math.random()<eps) return moves[Math.floor(Math.random()*moves.length)];
  let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
 }
-function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const vals=moves.map(i=>cheapEvalTake(S,S.current,i)).sort((a,b)=>b-a); return vals[1]>0.6;}
+function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const p=S.current; if(canWinNowWithTwoPicks(S,p,moves,2)!==null) return true; if(S.age==="ancient" && remainingCardsThisAge(S)>6) return false; const vals=moves.map(i=>cheapEvalTake(S,p,i)).sort((a,b)=>b-a); const single=vals[0], two=vals[0]+0.85*vals[1]; const reserveBias=S.age==="ancient"?0.35:0.15; return two>single+(0.55+reserveBias);}
 function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:{...p.feat}})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{jokerDouble:S.events.jokerDouble?S.events.jokerDouble.slice():[0,0],jokerDoubleByAge:S.events.jokerDoubleByAge?{ancient:S.events.jokerDoubleByAge.ancient.slice(),modern:S.events.jokerDoubleByAge.modern.slice()}:{ancient:[0,0],modern:[0,0]},modernSwap:S.events.modernSwap||0}};}
 function finalReward(S,perspective){if(S.winner!==undefined) return S.winner===perspective?1:0; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; if(sc[perspective]>sc[1-perspective]) return 1; if(sc[perspective]===sc[1-perspective]) return 0.5; return 0;}
 function modernOpeningSwingScore(S,startPlayer){
@@ -275,64 +275,124 @@ function remainingCardsThisAge(S){
  for(const sl of S.tableau.slots) if(!sl.removed) n++;
  return n;
 }
-function jokerReservePenalty(S,player){
- if(S.age!=="ancient") return 0;
-
+function jokerDecisionThreshold(S,player=S.current){
  const left=remainingCardsThisAge(S);
- const t=Math.min(1,Math.max(0,left/18));
- const second=1-S.nextAgeFirst;
-
- // Valore-opportunità del Joker in Antica: tenerlo per lo swap d'ordine in Moderna.
- // Penalità base per tutti + extra per chi rischia di iniziare secondo la Moderna.
- let penalty=0.40+0.70*t;
- if(player===second) penalty+=0.35+0.45*t;
- return penalty;
+ let threshold=0.06;
+ if(S.age==="ancient"){
+  if(left>12) threshold=0.09;
+  else if(left>7) threshold=0.07;
+  else threshold=0.05;
+  const t=Math.min(1,Math.max(0,left/18));
+  const second=1-S.nextAgeFirst;
+  threshold+=0.03+0.04*t;
+  if(player===second) threshold+=0.02+0.03*t;
+ }else{
+  threshold=left>10?0.07:0.04;
+ }
+ return threshold;
 }
-function canForceSupremacyWithTwoPicks(S,moves){
- const p=S.current;
-
+function canWinNowWithOnePick(S,player=S.current,moves=legalMoves(S)){
+ for(const idx of moves){
+  const C=cloneState(S);
+  C.current=player;
+  C.picksLeftThisTurn=1;
+  applyTake(C,idx);
+  if(C.ended && C.winner===player) return idx;
+ }
+ return null;
+}
+function canWinNowWithTwoPicks(S,player=S.current,moves=legalMoves(S),firstCap=4){
+ if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
  const firstCand=moves
-  .map(i=>({i,v:cheapEvalTake(S,p,i)}))
+  .map(i=>({i,v:cheapEvalTake(S,player,i)}))
   .sort((a,b)=>b.v-a.v)
-  .slice(0,3);
+  .slice(0,Math.min(firstCap,moves.length));
 
  for(const {i:first} of firstCand){
   const C=cloneState(S);
-  C.players[p].joker=false;
+  C.current=player;
+  C.players[player].joker=false;
   C.picksLeftThisTurn=2;
 
   applyTake(C,first);
-  if(C.ended && C.winner===p) return true;
+  if(C.ended && C.winner===player) return first;
 
   const m2=legalMoves(C);
-  if(!m2.length) continue;
-
-  let best2=m2[0],bestV=-Infinity;
-  for(const j of m2){
-   const v=cheapEvalTake(C,p,j);
-   if(v>bestV){bestV=v; best2=j;}
+  for(const second of m2){
+   const D=cloneState(C);
+   applyTake(D,second);
+   if(D.ended && D.winner===player) return first;
   }
-  applyTake(C,best2);
-  if(C.ended && C.winner===p) return true;
  }
+ return null;
+}
+function opponentCanWinImmediately(S,opponent){
+ const T=cloneState(S);
+ T.current=opponent;
+ T.picksLeftThisTurn=1;
+ if(canWinNowWithOnePick(T,opponent)!==null) return true;
+ if(T.players[opponent].joker && canWinNowWithTwoPicks(T,opponent,legalMoves(T),3)!==null) return true;
  return false;
+}
+function findSafeSingleMove(S,player=S.current,moves=legalMoves(S)){
+ const ordered=moves
+  .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+  .sort((a,b)=>b.v-a.v)
+  .map(x=>x.i);
+ for(const idx of ordered){
+  const C=cloneState(S);
+  C.current=player;
+  C.picksLeftThisTurn=1;
+  applyTake(C,idx);
+  if(C.ended && C.winner===player) return idx;
+  if(!opponentCanWinImmediately(C,1-player)) return idx;
+ }
+ return null;
+}
+function findSafeJokerFirstMove(S,player=S.current,moves=legalMoves(S)){
+ if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
+ const firstMoves=moves
+  .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+  .sort((a,b)=>b.v-a.v)
+  .slice(0,4)
+  .map(x=>x.i);
+ for(const first of firstMoves){
+  const C=cloneState(S);
+  C.current=player;
+  C.players[player].joker=false;
+  C.picksLeftThisTurn=2;
+  applyTake(C,first);
+  if(C.ended && C.winner===player) return first;
+
+  const secondMoves=legalMoves(C)
+   .map(i=>({i,v:cheapEvalTake(C,player,i)}))
+   .sort((a,b)=>b.v-a.v)
+   .slice(0,4)
+   .map(x=>x.i);
+
+  for(const second of secondMoves){
+   const D=cloneState(C);
+   applyTake(D,second);
+   if(D.ended && D.winner===player) return first;
+   if(!opponentCanWinImmediately(D,1-player)) return first;
+  }
+ }
+ return null;
 }
 function maybeUseJokerNow(S,moves){
  if(!(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2)) return false;
-
- if(canForceSupremacyWithTwoPicks(S,moves)) return true;
-
- // In Antica evitiamo l'uso precoce del Joker salvo chiusure immediate: 
- // aumenta la probabilità di conservarlo per lo swap in Moderna.
- if(S.age==="ancient" && remainingCardsThisAge(S)>4) return false;
-
+ const p=S.current;
+ if(canWinNowWithOnePick(S,p,moves)!==null) return false;
+ if(canWinNowWithTwoPicks(S,p,moves,4)!==null) return true;
+ const safeNoJ=findSafeSingleMove(S,p,moves);
+ if(safeNoJ===null){
+  const safeWithJ=findSafeJokerFirstMove(S,p,moves);
+  if(safeWithJ!==null) return true;
+ }
  const v1=bestSingleValue(S,moves);
  const v2=bestTwoPickValue(S,moves);
-
- const penalty=jokerReservePenalty(S,S.current);
- const baseThreshold=0.35;
-
- return v2>v1+baseThreshold+penalty;
+ const threshold=jokerDecisionThreshold(S,p);
+ return v2>v1+threshold;
 }
 function chooseMove(S,strategy,mcCfg){const moves=legalMoves(S); if(!moves.length) return null; if(moves.length===1) return moves[0]; if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; if(strategy==="greedy"){let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;}
  if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++; S.events.jokerDoubleByAge[S.age][S.current]++;}
