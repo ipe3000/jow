@@ -505,8 +505,8 @@ function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
   if(f0.hLinks>=4) return {winner:0,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
   if(f1.hLinks>=4) return {winner:1,reason:"Supremazia Tecnologica (>=4 Technological Sequences)"};
-  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
-  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Supremazia Militare (>=8 Swords di vantaggio)"};
+  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
+  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Supremazia Militare (>=7 Swords di vantaggio)"};
   return null;
 }
 
@@ -717,8 +717,8 @@ function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
   if(f0.hLinks>=4) return 0;
   if(f1.hLinks>=4) return 1;
-  if(f0.sw - f1.sw >= 8) return 0;
-  if(f1.sw - f0.sw >= 8) return 1;
+  if(f0.sw - f1.sw >= 7) return 0;
+  if(f1.sw - f0.sw >= 7) return 1;
   return null;
 }
 function flipNewSim(tableau,acc){
