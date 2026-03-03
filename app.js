@@ -532,6 +532,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
   G.modernSwapStillAvailable=true;
   if(!pl.joker) return Promise.resolve(nextFirst);
   if(pl.isAI){
+    const evalStart=performance.now();
     const noSwapState=cloneGameState();
     noSwapState.age="modern";
     noSwapState.current=nextFirst;
@@ -545,10 +546,19 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     swapState.picksLeftThisTurn=1;
     swapState.tableau=buildTableau("modern",swapState.decks.modern);
     swapState.modernSwapStillAvailable=true;
-    const evNo=estimatePolicyEV(noSwapState,1,120);
-    const evSwap=estimatePolicyEV(swapState,1,120);
+
+    // Keep this branch lightweight: it runs during the Ancient->Modern transition
+    // on the main thread and can otherwise feel like a UI freeze.
+    const transitionRollouts=32;
+    const evNo=estimatePolicyEV(noSwapState,1,transitionRollouts);
+    const evSwap=estimatePolicyEV(swapState,1,transitionRollouts);
     const turn1Swing=evaluateModernTurnOneSwing(cloneState(noSwapState),nextFirst,1);
-    if((evSwap-evNo) + turn1Swing*0.12 > 0.03){
+    const scoreDelta=(evSwap-evNo) + turn1Swing*0.12;
+    const elapsed=performance.now()-evalStart;
+    if(elapsed>1200){
+      log(`AI evaluates Modern initiative (${elapsed.toFixed(0)}ms).`);
+    }
+    if(scoreDelta > 0.03){
       pl.joker=false;
       log(`${pl.name} builds Wonder (Seize Initiative) and goes first in the Modern Age.`);
       return Promise.resolve(second);
