@@ -406,11 +406,11 @@ function promptNewGameStart(){
     const d=document.getElementById("newGameDialog");
     d.innerHTML=`
       <h3>New Game</h3>
-      <p>Sei sicuro di iniziare una nuova partita?</p>
+      <p>Sicuro di iniziare una nuova partita?</p>
       <p>Scegli chi inizia:</p>
       <div class='optRow'>
-        <button id='newStartHuman' class='primary'>Inizia HU (primo)</button>
-        <button id='newStartAi'>Inizia AI (primo)</button>
+        <button id='newStartHuman' class='primary'>YOU start</button>
+        <button id='newStartAi'>AI starts</button>
       </div>
       <div class='optRow'>
         <button id='newStartCancel'>Annulla</button>
