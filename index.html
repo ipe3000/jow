@@ -463,6 +463,18 @@ function diamondSequences(cards){
   }
   return seq;
 }
+function culturePlacementByPlayer(playersCards){
+  const placements=[[],[]];
+  const labels=["1st","2nd","3rd"];
+  const ranked=[
+    ...diamondSequences(playersCards[0]).map(s=>({...s,owner:0})),
+    ...diamondSequences(playersCards[1]).map(s=>({...s,owner:1}))
+  ].sort((a,b)=>b.length-a.length || b.high-a.high);
+  for(let i=0;i<Math.min(3,ranked.length);i++){
+    placements[ranked[i].owner].push(labels[i]);
+  }
+  return placements.map(p=>p.length?p.join(", "):"—");
+}
 function scoreGame(){
   const p0=G.players[0].cards,p1=G.players[1].cards;
   const s0=swords(p0),s1=swords(p1);
@@ -1096,8 +1108,9 @@ function render(){
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
-  const supremacyOwner = sw[0] === sw[1] ? "" : (sw[0] > sw[1] ? " PL" : " AI");
-  sg.innerHTML=`<div class='pill'>Tech Seq.: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${Math.abs(sw[0]-sw[1])}${supremacyOwner}</div>`;
+  const militaryLead=sw[1]-sw[0];
+  const supremacyLabel=militaryLead===0?"Pari":(militaryLead>0?"AI":"PL");
+  sg.innerHTML=`<div class='pill'>Tech Seq.: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
@@ -1105,11 +1118,18 @@ function render(){
 
   const col=document.getElementById("collections");
   col.innerHTML="";
+  const culturePlacements=culturePlacementByPlayer(G.players.map(p=>p.cards));
   for(let i=0;i<2;i++){
     const p=G.players[i];
     const el=document.createElement("div"); el.className=`pbox ${G.current===i&&!G.ended?"active":""}`;
     const bySuit={S:[],H:[],D:[],C:[]};
     p.cards.forEach(c=>bySuit[c.suit].push(c));
+    const suitMetric={
+      S:String(swords(p.cards)),
+      H:String(breakthroughCount(p.cards)),
+      C:String(foodVP(p.cards)),
+      D:culturePlacements[i]
+    };
     const suitCols=Object.entries(bySuit).map(([s,cards])=>{
       const sorted=sortCardsByRank(cards);
       const chips=groupedSuitTokens(s,sorted)
@@ -1117,7 +1137,7 @@ function render(){
           ? `<span class='runGroup'>${token.cards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</span>`
           : `<span class='chip s${token.cards[0].suit}'>${label(token.cards[0])}</span>`)
         .join("");
-      return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${cards.length})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
+      return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${suitMetric[s]})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
     }).join("");
     el.innerHTML=`<div class='playerHeader'><strong>${p.name}</strong> (${p.cards.length} carte)</div><div class='takenGrid'>${suitCols}</div>`;
     col.appendChild(el);
