@@ -1148,6 +1148,12 @@ function maybeRunAiTurn(){
   if(!G||G.ended||G.pendingSwapChoice) return;
   if(!G.players[G.current].isAI) return;
   const forced=legalOpenMoves(G.tableau);
+  if(forced.length===0){
+    log("AI has no legal pick and passes the turn.");
+    G.picksLeftThisTurn=0;
+    endTurnOrAge();
+    return;
+  }
   if(forced.length===1){
     takeCard(forced[0]);
     return;
