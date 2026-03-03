@@ -381,11 +381,11 @@ function checkSupremacy(){
   return null;
 }
 
-function newGame(){
+function newGame(firstPlayer=null){
   const base=shuffle(makeDeck());
   const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient"));
   const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
-  const first=Math.random()<0.5?0:1;
+  const first=firstPlayer===0||firstPlayer===1?firstPlayer:(Math.random()<0.5?0:1);
   G={
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
@@ -399,6 +399,30 @@ function newGame(){
   G.tableau=buildTableau("ancient",G.decks.ancient);
   log(`Nuova partita. Inizia ${G.players[G.current].name}.`);
   render();
+}
+
+function promptNewGameStart(){
+  return new Promise(resolve=>{
+    const d=document.getElementById("newGameDialog");
+    d.innerHTML=`
+      <h3>New Game</h3>
+      <p>Sei sicuro di iniziare una nuova partita?</p>
+      <p>Scegli chi inizia:</p>
+      <div class='optRow'>
+        <button id='newStartHuman' class='primary'>Inizia HU (primo)</button>
+        <button id='newStartAi'>Inizia AI (primo)</button>
+      </div>
+      <div class='optRow'>
+        <button id='newStartCancel'>Annulla</button>
+      </div>
+    `;
+    if(!d.open) d.showModal();
+    const close=(choice=null)=>{ if(d.open) d.close(); resolve(choice); };
+    d.querySelector("#newStartHuman").onclick=()=>close(0);
+    d.querySelector("#newStartAi").onclick=()=>close(1);
+    d.querySelector("#newStartCancel").onclick=()=>close(null);
+    d.oncancel=e=>{ e.preventDefault(); close(null); };
+  });
 }
 
 function log(msg){
@@ -998,7 +1022,15 @@ async function endTurnOrAge(){
 function render(){
   if(!G) return;
   document.getElementById("agePill").textContent=`Età: ${G.age==="ancient"?"Antica":"Moderna"}`;
-  document.getElementById("turnPill").textContent=G.ended?"Partita conclusa":`Turno: ${G.players[G.current].name}`;
+  const sideTurn=document.getElementById("sideTurnPill");
+  if(G.ended){
+    sideTurn.textContent="Turn: -";
+    sideTurn.classList.remove("aiTurn");
+  }else{
+    const aiTurn=G.players[G.current].isAI;
+    sideTurn.textContent=`Turn: ${aiTurn?"AI":"HU"}`;
+    sideTurn.classList.toggle("aiTurn",aiTurn);
+  }
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
@@ -1081,6 +1113,10 @@ if(document.fonts?.ready){
   document.fonts.ready.then(()=>scheduleRender());
 }
 
-document.getElementById("newGameBtn").onclick=()=>newGame();
+document.getElementById("newGameBtn").onclick=async()=>{
+  const first=await promptNewGameStart();
+  if(first===null) return;
+  newGame(first);
+};
 document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
 newGame();

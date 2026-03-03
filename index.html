@@ -33,6 +33,9 @@
     .status{display:grid; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr)); font-size:13px}
     .status .pill{white-space:nowrap; text-align:center}
     .pill{background:#0f172a; border:1px solid #334155; border-radius:999px; padding:3px 8px; color:var(--muted); font-size:12px}
+    .turnTag{min-width:92px; text-align:center}
+    .turnTag.aiTurn{color:#fecaca; border-color:#ef4444; animation:aiBlink .9s steps(2,end) infinite}
+    @keyframes aiBlink{0%,100%{opacity:1}50%{opacity:.3}}
     .tableauWrap{overflow:hidden; display:flex; justify-content:center; align-items:flex-start}
     .tableau{position:relative; margin:0; transform-origin:top left}
     .sidePanel .bd{display:flex; flex-direction:column; gap:8px; overflow:visible; padding:8px}
@@ -107,6 +110,7 @@
     .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
     .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
     .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+    .controlRow{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
     @media (max-width: 600px){
       main{padding:8px; gap:8px}
       .panel{border-radius:10px}
@@ -132,9 +136,7 @@
   <div class="headerRow">
     <h1>Jokers of Wonders</h1>
     <div class="topControls">
-      <button class="primary" id="newGameBtn">Nuova partita</button>
       <span class="pill" id="agePill"></span>
-      <span class="pill" id="turnPill"></span>
     </div>
   </div>
 </header>
@@ -144,8 +146,10 @@
   </section>
   <section class="panel sidePanel">
     <div class="bd">
-      <div class="row" style="margin-bottom:4px">
+      <div class="row controlRow" style="margin-bottom:4px">
+        <span class="pill turnTag" id="sideTurnPill">Turn: HU</span>
         <button id="useJokerBtn">Build Wonder: Extra Turn</button>
+        <button class="primary" id="newGameBtn">New Game</button>
       </div>
       <div class="status" id="statusGrid"></div>
       <div class="collections" id="collections"></div>
@@ -160,6 +164,7 @@
 </main>
 
 <dialog id="modal"></dialog>
+<dialog id="newGameDialog"></dialog>
 
 <script src="app.js"></script>
 
