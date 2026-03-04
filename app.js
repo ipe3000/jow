@@ -557,14 +557,17 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     noSwapState.age="modern";
     noSwapState.current=nextFirst;
     noSwapState.picksLeftThisTurn=1;
-    noSwapState.tableau=buildTableau("modern",noSwapState.decks.modern);
+    // IMPORTANT: buildTableau pops cards from the provided deck array.
+    // We must preserve noSwapState.decks.modern for subsequent evaluations.
+    noSwapState.tableau=buildTableau("modern",noSwapState.decks.modern.slice());
     noSwapState.modernSwapStillAvailable=true;
     const swapState=cloneGameState();
     swapState.players[second].joker=false;
     swapState.age="modern";
     swapState.current=second;
     swapState.picksLeftThisTurn=1;
-    swapState.tableau=buildTableau("modern",swapState.decks.modern);
+    // Same here: keep the simulation deck intact for downstream look-ahead.
+    swapState.tableau=buildTableau("modern",swapState.decks.modern.slice());
     swapState.modernSwapStillAvailable=true;
 
     // Keep this branch lightweight: it runs during the Ancient->Modern transition
@@ -736,6 +739,7 @@ function cheapEvalTake(S,player,idx){
   const slot=S.tableau.slots[idx];
   if(!slot || slot.removed || slot.faceDown) return -Infinity;
   const card=slot.card;
+  if(!card) return -Infinity;
   const me=S.players[player].feat;
   const opp=S.players[1-player].feat;
 
