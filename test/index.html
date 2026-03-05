@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jokers of Wonders</title>
+  <style>
+    :root{
+      --bg:#101522; --panel:#1b2436; --panel2:#232f46; --text:#eef2ff; --muted:#b7c2e6;
+      --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --accent:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif; background:radial-gradient(circle at top,#1c2740,#0b1020 60%); color:var(--text); display:flex; flex-direction:column; overflow-x:hidden; overflow-y:auto}
+    header{border-bottom:1px solid #334155; background:#0b1020cc; position:sticky; top:0; z-index:20; backdrop-filter:blur(5px)}
+    .headerRow{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; white-space:nowrap}
+    .headerRow h1{grid-column:2; text-align:center}
+    .topControls{display:flex; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; min-width:0}
+    .topControls{grid-column:3; justify-self:end}
+    .topControls .pill,.topControls button{flex:0 0 auto}
+    header{overflow-x:auto}
+    h1{margin:0;font-size:18px}
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between}
+    button{background:#1f2c45; border:1px solid #4b5d87; color:var(--text); padding:2px 10px; border-radius:10px; cursor:pointer}
+    button.primary{background:#1d4ed8; border-color:#2563eb}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    main{max-width:1200px; width:100%; margin:0 auto; padding:8px; display:grid; gap:8px; grid-template-columns:1.3fr .7fr; flex:1}
+    @media (max-width: 980px){main{grid-template-columns:1fr}}
+    .panel{background:#111a2dcc; border:1px solid #334155; border-radius:14px; overflow:hidden; display:flex; flex-direction:column}
+    .tableauPanel{align-self:start}
+    .hd{padding:10px 12px; border-bottom:1px solid #334155; font-weight:700; display:flex; justify-content:space-between; align-items:center; gap:8px}
+    .bd{padding:7px}
+    .status{display:grid; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr)); font-size:13px}
+    .status .pill{white-space:nowrap; text-align:center}
+    .pill{background:#0f172a; border:1px solid #334155; border-radius:999px; padding:3px 8px; color:var(--muted); font-size:12px}
+    .turnTag{min-width:92px; text-align:center}
+    .turnTag.aiTurn{color:#fecaca; border-color:#ef4444; animation:aiBlink .9s steps(2,end) infinite}
+    @keyframes aiBlink{0%,100%{opacity:1}50%{opacity:.3}}
+    .tableauWrap{overflow:hidden; display:flex; justify-content:center; align-items:flex-start}
+    .tableau{position:relative; margin:0; transform-origin:top left}
+    .sidePanel .bd{display:flex; flex-direction:column; gap:8px; overflow:visible; padding:8px}
+    .sidePanel .row{margin-bottom:0!important}
+    .sidePanel button{padding:4px 10px; font-size:12px; border-radius:8px}
+    .sidePanel .status{gap:6px; font-size:12px}
+    .sidePanel .pill{padding:2px 6px; font-size:11px}
+    .sidePanel .collections{gap:6px}
+    .sidePanel .pbox{padding:6px}
+    .sidePanel .takenGrid{gap:4px; margin-top:6px}
+    .sidePanel .takenCol{padding:5px}
+    .sidePanel .cardsMini{gap:4px; margin-top:4px}
+    .sidePanel .chip{padding:2px 6px; font-size:10px}
+    .card{position:absolute; width:64px; height:90px; border-radius:14px; background:linear-gradient(180deg,#1f2937,#111827); border:1px solid rgba(255,255,255,.14); box-shadow:0 10px 18px rgba(0,0,0,.32); display:flex; align-items:center; justify-content:center; font-weight:700; user-select:none; transition:transform .10s ease, box-shadow .14s ease, filter .14s ease; text-align:center; will-change:transform}
+    .card .big{font-size:22px; font-weight:720; line-height:1; position:relative; z-index:2}
+    .card .small{position:absolute; top:6px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.96); font-weight:600; letter-spacing:.6px; white-space:nowrap; z-index:3; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:1px 3px; text-transform:uppercase; text-shadow:0 1px 0 rgba(0,0,0,.35); backdrop-filter:blur(6px)}
+    .card .cornerL{position:absolute; top:6px; left:7px; font-size:11px; color:rgba(255,255,255,.78)}
+    .card .cornerR{position:absolute; top:6px; right:7px; font-size:11px; color:rgba(255,255,255,.78)}
+    .faceDown{background:repeating-linear-gradient(45deg,rgba(255,255,255,.22) 0px,rgba(255,255,255,.22) 6px,transparent 6px,transparent 12px),linear-gradient(180deg,#475569,#1f2937); border-color:rgba(148,163,184,.65); box-shadow:0 8px 16px rgba(0,0,0,.22); color:#d1d5db; cursor:default}
+    .open{cursor:pointer}
+    @media (hover:hover){
+      .open:hover{transform:translateY(-4px) scale(1.02); filter:brightness(1.06) saturate(1.06)}
+      .blocked:hover{filter:saturate(.82) brightness(.88)}
+    }
+    .accessible{box-shadow:0 0 0 4px rgba(145,126,185,.95),0 0 0 7px rgba(145,126,185,.45),0 18px 34px rgba(0,0,0,.55)}
+    .accessible{filter:brightness(1.03) saturate(1.05)}
+    .accessible::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0) 60%);pointer-events:none;z-index:1}
+    .blocked{filter:saturate(.85) brightness(.9); box-shadow:0 6px 12px rgba(0,0,0,.35); transform:translateY(2px) scale(.985); cursor:not-allowed}
+    .blocked::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0) 55%);pointer-events:none;z-index:1}
+    .overlapped{box-shadow:0 12px 22px rgba(0,0,0,.48),0 0 0 1px rgba(15,23,42,.95)}
+    .covering{box-shadow:0 16px 30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)}
+    .removed{display:none}
+    .aiPickedPreview{filter:brightness(.9) saturate(.78); background:rgba(128,128,128,.28)!important; box-shadow:0 0 0 2px rgba(255,255,255,.45),0 10px 20px rgba(0,0,0,.38); color:#fff}
+    .aiPickedPreview .big,.aiPickedPreview .small,.aiPickedPreview .cornerL,.aiPickedPreview .cornerR{color:#fff!important}
+    .aiPickedPreview::after{content:""; position:absolute; inset:0; border-radius:inherit; background:transparent; pointer-events:none; z-index:1}
+    .suitC{background:linear-gradient(180deg,rgba(34,197,94),rgba(34,197,94)); border-color:rgba(34,197,94)}
+    .suitS{background:linear-gradient(180deg,rgba(239,68,68),rgba(239,68,68)); border-color:rgba(239,68,68)}
+    .suitD{background:linear-gradient(180deg,rgba(56,189,248),rgba(56,189,248)); border-color:rgba(56,189,248)}
+    .suitH{background:linear-gradient(180deg,rgba(250,204,21),rgba(250,204,21)); border-color:rgba(250,204,21)}
+    .card .cornerL,.card .cornerR{z-index:4}
+    .card.blocked::after,.card.accessible::before{z-index:1}
+    .card.faceDown .small,.card.faceDown .big{display:none!important}
+    .collections{display:grid; gap:8px}
+    .pbox{border:1px solid #334155; border-radius:12px; padding:8px; background:#0f172a}
+    .pbox.active{border-color:#60a5fa; box-shadow:0 0 0 2px #60a5fa33 inset}
+    .playerHeader{font-size:11px; margin:0; padding:0}
+    .cardsMini{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+    .runGroup{display:inline-flex; gap:4px; padding:3px 7px; border-radius:999px; background:rgba(148,163,184,.16); border:1px solid rgba(148,163,184,.35)}
+    .runGroup .chip{padding:0; border:0; background:transparent}
+    .chip{padding:3px 7px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); font-size:11px; color:rgba(255,255,255,.9)}
+    .chip.sS{border-color:rgba(239,68,68,.45)}
+    .chip.sH{border-color:rgba(250,204,21,.45)}
+    .chip.sD{border-color:rgba(56,189,248,.45)}
+    .chip.sC{border-color:rgba(34,197,94,.45)}
+    .takenGrid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:8px}
+    .takenCol{border:1px solid #334155; border-radius:10px; padding:6px; background:#0b1220}
+    .takenTitle{font-size:11px; color:var(--muted); margin-bottom:4px}
+    .log{height:180px; overflow:auto; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:8px; font-size:12px}
+    .logPanel h3{margin:0 0 6px; font-size:15px}
+    .line{margin:0 0 5px; color:#dbeafe}
+    dialog{border:1px solid #334155; border-radius:12px; padding:14px; background:#0f172a; color:var(--text); width:min(560px,92vw)}
+    dialog.modernSwapModal{align-self:flex-start; margin-top:6px; padding:8px 10px; width:min(320px,92vw); font-size:12px}
+    dialog.modernSwapModal h3{margin:0 0 4px; font-size:14px}
+    dialog.modernSwapModal p{margin:0}
+    dialog.modernSwapModal .optRow{margin-top:6px; gap:5px}
+    dialog.modernSwapModal button{padding:5px 9px; font-size:12px}
+    .endSummary{width:100%; border-collapse:collapse; margin:10px 0; border:1px solid #334155; border-radius:10px; overflow:hidden; background:#0b1220}
+    .endSummary th,.endSummary td{padding:6px 8px; text-align:right; border:1px solid #334155}
+    .endSummary th:first-child,.endSummary td:first-child{text-align:left}
+    .endSummary tbody td:first-child{color:var(--muted)}
+    .endSummary .tot td{font-weight:800; color:#fde68a}
+    .winnerBanner{margin-top:10px; padding:12px; border-radius:12px; border:1px solid #2563eb; background:linear-gradient(180deg,#1d4ed8,#1e3a8a); font-weight:900; text-align:center; font-size:19px}
+    .winnerBanner.draw{border-color:#64748b; background:linear-gradient(180deg,#334155,#1f2937)}
+    .optRow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+    .controlRow{display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch}
+    .controlRow .pill{padding:2px 6px; font-size:11px}
+    .controlRow button{padding:3px 8px; font-size:11px; border-radius:8px; line-height:1.1}
+    .controlRow > *{flex:0 0 auto}
+    @media (max-width: 600px){
+      main{padding:8px; gap:8px}
+      .panel{border-radius:10px}
+      .bd{padding:7px}
+      .sidePanel .bd{display:flex; flex-direction:column; gap:6px; overflow:visible}
+      .sidePanel .bd > .row{margin-bottom:0!important}
+      .sidePanel button{width:100%; padding:5px 10px; font-size:13px}
+      .sidePanel .controlRow{gap:4px}
+      .sidePanel .controlRow button{width:auto; white-space:nowrap; padding:3px 7px; font-size:11px}
+      .sidePanel .controlRow .pill{padding:2px 5px; font-size:10px}
+      .status{gap:6px; font-size:12px}
+      .pill{padding:2px 6px; font-size:11px}
+      .collections{gap:6px; flex:none; min-height:auto; overflow:visible}
+      .pbox{padding:6px}
+      .cardsMini{gap:4px; margin-top:4px}
+      .chip{padding:2px 6px; font-size:10px}
+      .takenGrid{gap:4px; margin-top:6px}
+      .takenCol{padding:5px}
+      .takenTitle{margin-bottom:3px}
+      .log{height:180px; padding:6px}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="headerRow">
+    <h1>Jokers of Wonders</h1>
+    <div class="topControls">
+      <span class="pill" id="agePill"></span>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="panel tableauPanel">
+    <div class="bd tableauWrap"><div id="tableau" class="tableau"></div></div>
+  </section>
+  <section class="panel sidePanel">
+    <div class="bd">
+      <div class="row controlRow" style="margin-bottom:4px">
+        <span class="pill turnTag" id="sideTurnPill">Turn: You</span>
+        <button id="useJokerBtn">Extra Turn</button>
+        <button class="primary" id="newGameBtn">New Game</button>
+      </div>
+      <div class="status" id="statusGrid"></div>
+      <div class="collections" id="collections"></div>
+    </div>
+  </section>
+  <section class="panel logPanel">
+    <div class="bd">
+      <h3>Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="modal"></dialog>
+<dialog id="newGameDialog"></dialog>
+
+<script src="app.js"></script>
+
+</body>
+</html>

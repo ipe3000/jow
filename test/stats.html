@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jokers of Wonders — Stats Lab</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#121a2f;--muted:#93a3c7;--text:#eef4ff;--line:#263350}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#0a0f1d,#0e1730);color:var(--text)}
+    .app{max-width:1200px;margin:0 auto;padding:18px;display:grid;grid-template-columns:300px 1fr;gap:14px;min-height:100vh}
+    @media(max-width:980px){.app{grid-template-columns:1fr}}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .controls{display:grid;gap:10px}.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+    .card{background:#0d1528;border:1px solid var(--line);border-radius:12px;padding:10px}.card .k{font-size:12px;color:var(--muted)}.card .v{font-size:24px;font-weight:800;margin-top:3px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:980px){.grid{grid-template-columns:1fr}}
+    table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
+    th{color:#c4d3f5;font-size:12px;text-transform:uppercase}.hist{display:grid;gap:6px}.bar{display:grid;grid-template-columns:66px 1fr 50px;gap:8px;align-items:center;font-size:12px}
+    .track{height:10px;border-radius:999px;background:#0a1222;border:1px solid #29395a;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#2dd4bf,#60a5fa)}
+    input,select,button{border-radius:10px;border:1px solid #33466e;background:#0d1529;color:var(--text);padding:9px 10px} button{cursor:pointer;background:#16356f;font-weight:700}
+    .small{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <h1>Jokers of Wonders — Stats Lab</h1>
+      <p class="small">Monte Carlo simulator aligned with game rules, useful for board game designers to tune balance (win rate, victory conditions, VP category weights).</p>
+      <div class="controls">
+        <label>Number of games <input id="games" type="number" min="1" max="10000" value="1000" /></label>
+        <label>AI A strategy <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>AI B strategy <select id="aiStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option></select></label>
+        <label>Monte Carlo AI strength (1-10) <input id="mcStrength" type="number" min="1" max="10" step="1" value="1" /></label>
+        <label>Starting player <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternate</option></select></label>
+        <button id="runBtn">Run simulation</button>
+        <div id="status" class="small">Ready.</div>
+      </div>
+    </aside>
+
+    <main class="panel">
+      <div class="kpi">
+        <div class="card"><div class="k">Games</div><div class="v" id="kGames">0</div></div>
+        <div class="card"><div class="k">Win rate AI A</div><div class="v" id="kAWin">0%</div></div>
+        <div class="card"><div class="k">Win rate AI B</div><div class="v" id="kBWin">0%</div></div>
+        <div class="card"><div class="k">Draws</div><div class="v" id="kDraw">0%</div></div>
+      </div>
+
+      <div class="grid">
+        <section class="card"><h3>Score summary</h3><table><thead><tr><th>Metric</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="scoreTable"></tbody></table></section>
+        <section class="card"><h3>VP margin distribution (AI B - AI A)</h3><div id="marginHist" class="hist"></div></section>
+      </div>
+
+      <div class="grid" style="margin-top:10px;">
+        <section class="card"><h3>Victory conditions</h3><table><thead><tr><th>Event</th><th>Frequency</th></tr></thead><tbody id="eventTable"></tbody></table></section>
+        <section class="card"><h3>Average VP breakdown (JoW rules)</h3><table><thead><tr><th>Category</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="vpTable"></tbody></table></section>
+      </div>
+    </main>
+  </div>
+
+<script src="stats.js"></script>
+
+</body>
+</html>
