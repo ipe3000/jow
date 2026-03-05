@@ -2,9 +2,9 @@ const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[10,6,3];
 const MILITARY_VP=5;
 const TECHNOLOGY_MAJORITY_VP=5;
-const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Flowers"};
+const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Foods"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
-const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FLOW"};
+const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
@@ -526,7 +526,7 @@ function showEndgameModal(sc,winner){
   const p0=G.players[0].name, p1=G.players[1].name;
   const rows=[
     {label:"Military",a:sc.detail.military[0],b:sc.detail.military[1]},
-    {label:"Flowers",a:sc.detail.flowers[0],b:sc.detail.flowers[1]},
+    {label:"Foods",a:sc.detail.flowers[0],b:sc.detail.flowers[1]},
     {label:"Technology",a:sc.detail.techVP[0],b:sc.detail.techVP[1]},
     {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]}
   ];
@@ -1247,7 +1247,9 @@ function render(){
     const p=G.players[i];
     const el=document.createElement("div"); el.className=`pbox ${G.current===i&&!G.ended?"active":""}`;
     const bySuit={S:[],H:[],D:[],C:[]};
+    const rankTotals=Object.create(null);
     p.cards.forEach(c=>bySuit[c.suit].push(c));
+    p.cards.forEach(c=>{ rankTotals[c.rank]=(rankTotals[c.rank]||0)+1; });
     const suitMetric={
       S:String(swords(p.cards)),
       H:String(breakthroughCount(p.cards)),
@@ -1259,7 +1261,7 @@ function render(){
       const chips=groupedSuitTokens(s,sorted)
         .map(token=>token.cards.length>1
           ? `<span class='runGroup'>${token.cards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</span>`
-          : `<span class='chip s${token.cards[0].suit}'>${label(token.cards[0])}</span>`)
+          : `<span class='chip s${token.cards[0].suit}'>${label(token.cards[0])}${s==="C"&&rankTotals[token.cards[0].rank]>=3?`x${rankTotals[token.cards[0].rank]}`:""}</span>`)
         .join("");
       return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${suitMetric[s]})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
     }).join("");
