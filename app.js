@@ -2,9 +2,9 @@ const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[10,6,3];
 const MILITARY_VP=5;
 const TECHNOLOGY_MAJORITY_VP=5;
-const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Food"};
+const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Flowers"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
-const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
+const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FLOW"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
@@ -29,9 +29,15 @@ let aiTimer=null;
 let renderScheduled=false;
 
 const AI_BASE_BUDGET_MS=5000;
-const HEURISTIC_WEIGHT_FOOD=0.8;
+const HEURISTIC_WEIGHT_FLOWER=1.55;
 const HEURISTIC_WEIGHT_DIAMOND=0.9;
-const HEURISTIC_FOOD_LOW_CARD_BONUS=-0.2;
+
+function makeFeat(){
+  return {sw:0,hMask:0,hLinks:0,dMask:0,dAdj:0,rankCounts:Array(13).fill(0),clubCounts:Array(13).fill(0)};
+}
+function cloneFeat(feat){
+  return {...feat,rankCounts:feat.rankCounts.slice(),clubCounts:feat.clubCounts.slice()};
+}
 
 function isSlotGone(slot){
   return !!(slot.removed || slot.pendingAIPick);
@@ -269,27 +275,50 @@ function swordValue(card){
   const v=RANK_VAL[card.rank];
   return (v<=9) ? 1 : 2;
 }
-function clubValue(card){
-  const v=RANK_VAL[card.rank];
-  return (v<=9) ? 1 : 2;
-}
-function kingRiskFromCount(k){
-  if(k>=3) return -3;
-  if(k===2) return -0.6;
+function flowerContribution(rankCount,clubCount){
+  if(!clubCount) return 0;
+  if(rankCount>=4) return clubCount*5;
+  if(rankCount>=3) return clubCount*2;
   return 0;
 }
+function flowerVP(cards){
+  const rankCounts=Array(13).fill(0);
+  const clubCounts=Array(13).fill(0);
+  for(const card of cards){
+    const idx=RANK_VAL[card.rank]-1;
+    rankCounts[idx]+=1;
+    if(card.suit==="C") clubCounts[idx]+=1;
+  }
+  let vp=0;
+  for(let i=0;i<13;i++) vp+=flowerContribution(rankCounts[i],clubCounts[i]);
+  return vp;
+}
+function flowerDeltaForCard(feat,card){
+  const idx=RANK_VAL[card.rank]-1;
+  const before=flowerContribution(feat.rankCounts[idx],feat.clubCounts[idx]);
+  const rankAfter=feat.rankCounts[idx]+1;
+  const clubAfter=feat.clubCounts[idx]+(card.suit==="C"?1:0);
+  const after=flowerContribution(rankAfter,clubAfter);
+  let bonus=after-before;
+  if(card.suit!=="C" && feat.clubCounts[idx]>0){
+    if(rankAfter===3) bonus+=0.45*feat.clubCounts[idx];
+    if(rankAfter===4) bonus+=0.7*feat.clubCounts[idx];
+  }
+  return bonus;
+}
 function updateFeat(feat,card){
+  const idx=RANK_VAL[card.rank]-1;
+  feat.rankCounts[idx]+=1;
+  if(card.suit==="C") feat.clubCounts[idx]+=1;
   if(card.suit==="S") feat.sw+=swordValue(card);
   if(card.suit==="H"){
     feat.hMask|=bitOfRank(card.rank);
     feat.hLinks=techSequenceCountFromMask(feat.hMask);
   }
-  if(card.suit==="C") feat.cSum+=clubValue(card);
   if(card.suit==="D"){
     feat.dMask|=bitOfRank(card.rank);
     feat.dAdj=diamondAdjFromMask(feat.dMask);
   }
-  if(card.rank==="K") feat.kCount+=1;
 }
 function swords(cards){
   return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);
@@ -300,12 +329,7 @@ function breakthroughCount(cards){
     .reduce((m,c)=>m|bitOfRank(c.rank),0);
   return techSequenceCountFromMask(hMask);
 }
-function foodVP(cards){
-  return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+clubValue(c),0);
-}
-function hasCalamityMalus(cards){
-  return cards.filter(c=>c.rank==="K").length>=3;
-}
+
 function diamondSequences(cards){
   const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank]));
   if(owned.size<2) return [];
@@ -342,8 +366,7 @@ function scoreGame(){
   const s0=swords(p0),s1=swords(p1);
   const tech0=breakthroughCount(p0), tech1=breakthroughCount(p1);
   const techVP=[technologyVP(tech0,tech1),technologyVP(tech1,tech0)];
-  const food0=foodVP(p0), food1=foodVP(p1);
-  const calam0=hasCalamityMalus(p0), calam1=hasCalamityMalus(p1);
+  const flower0=flowerVP(p0), flower1=flowerVP(p1);
   const military=[0,0];
   if(s0>s1) military[0]=MILITARY_VP; else if(s1>s0) military[1]=MILITARY_VP;
 
@@ -358,19 +381,18 @@ function scoreGame(){
     cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
   }
 
-  const vp0=military[0]+food0+techVP[0]+culture[0]-(calam0?5:0);
-  const vp1=military[1]+food1+techVP[1]+culture[1]-(calam1?5:0);
+  const vp0=military[0]+flower0+techVP[0]+culture[0];
+  const vp1=military[1]+flower1+techVP[1]+culture[1];
 
   return {
     vp:[vp0,vp1],
     detail:{
       swords:[s0,s1],
       military,
-      food:[food0,food1],
+      flowers:[flower0,flower1],
       tech:[tech0,tech1],
       techVP,
       culture,
-      calamity:[calam0?-5:0,calam1?-5:0],
       cultureAwards
     }
   };
@@ -393,8 +415,8 @@ function newGame(firstPlayer=null){
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
     players:[
-      {name:"You",cards:[],joker:true,isAI:false,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},
-      {name:"AI",cards:[],joker:true,isAI:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}
+      {name:"You",cards:[],joker:true,isAI:false,feat:makeFeat()},
+      {name:"AI",cards:[],joker:true,isAI:true,feat:makeFeat()}
     ],
     lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null,
     pendingAIRemovals:[]
@@ -504,10 +526,9 @@ function showEndgameModal(sc,winner){
   const p0=G.players[0].name, p1=G.players[1].name;
   const rows=[
     {label:"Military",a:sc.detail.military[0],b:sc.detail.military[1]},
-    {label:"Food",a:sc.detail.food[0],b:sc.detail.food[1]},
+    {label:"Flowers",a:sc.detail.flowers[0],b:sc.detail.flowers[1]},
     {label:"Technology",a:sc.detail.techVP[0],b:sc.detail.techVP[1]},
-    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Calamity",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
@@ -663,7 +684,7 @@ function cloneGameState(){
     nextAgeFirst:G.nextAgeFirst,
     picksLeftThisTurn:G.picksLeftThisTurn,
     modernSwapStillAvailable:G.modernSwapStillAvailable,
-    players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
+    players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
     tableau:simTableau,
     decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
   };
@@ -719,13 +740,7 @@ function staticTakeValue(S,player,card){
     dBt=techSequenceCountFromMask(nm)-f.hLinks;
   }
 
-  let dFood=0;
-  if(card.suit==="C"){
-    const before=f.cSum;
-    const after=f.cSum+clubValue(card);
-    dFood=after-before;
-    if(clubValue(card)===1) dFood+=HEURISTIC_FOOD_LOW_CARD_BONUS;
-  }
+  const dFlower=flowerDeltaForCard(f,card);
 
   let dDia=0;
   if(card.suit==="D"){
@@ -733,11 +748,7 @@ function staticTakeValue(S,player,card){
     dDia=diamondAdjFromMask(nm)-f.dAdj;
   }
 
-  const oldKR=kingRiskFromCount(f.kCount);
-  const newKR=kingRiskFromCount(f.kCount + (card.rank==="K" ? 1 : 0));
-  const dKing=newKR-oldKR;
-
-  return dSw*1.2 + dBt*1.6 + dFood*HEURISTIC_WEIGHT_FOOD + dDia*HEURISTIC_WEIGHT_DIAMOND + dKing*1.4;
+  return dSw*1.25 + dBt*1.7 + dFlower*HEURISTIC_WEIGHT_FLOWER + dDia*HEURISTIC_WEIGHT_DIAMOND;
 }
 function cheapEvalTake(S,player,idx){
   const slot=S.tableau.slots[idx];
@@ -755,13 +766,7 @@ function cheapEvalTake(S,player,idx){
     dBt=techSequenceCountFromMask(nm)-me.hLinks;
   }
 
-  let dFood=0;
-  if(card.suit==="C"){
-    const before=me.cSum;
-    const after=me.cSum+clubValue(card);
-    dFood=after-before;
-    if(clubValue(card)===1) dFood+=HEURISTIC_FOOD_LOW_CARD_BONUS;
-  }
+  const dFlower=flowerDeltaForCard(me,card);
 
   let dDia=0;
   if(card.suit==="D"){
@@ -769,14 +774,12 @@ function cheapEvalTake(S,player,idx){
     dDia=diamondAdjFromMask(nm)-me.dAdj;
   }
 
-  const oldKR=kingRiskFromCount(me.kCount);
-  const newKR=kingRiskFromCount(me.kCount + (card.rank==="K" ? 1 : 0));
-  const dKing=newKR-oldKR;
-
-  const deny=(card.suit==="S" ? 0.2 : 0) + (card.suit==="H" ? 0.15 : 0);
+  const rankIdx=RANK_VAL[card.rank]-1;
+  const denyFlower=(opp.clubCounts[rankIdx]||0) * (opp.rankCounts[rankIdx]>=2 ? 0.35 : 0.15);
+  const deny=(card.suit==="S" ? 0.24 : 0) + (card.suit==="H" ? 0.18 : 0) + denyFlower;
   const pressure=Math.max(0,opp.sw-me.sw-5)*0.05;
 
-  const baseScore=dSw*1.2 + dBt*1.6 + dFood*HEURISTIC_WEIGHT_FOOD + dDia*HEURISTIC_WEIGHT_DIAMOND + dKing*1.4 + deny + pressure;
+  const baseScore=dSw*1.25 + dBt*1.7 + dFlower*HEURISTIC_WEIGHT_FLOWER + dDia*HEURISTIC_WEIGHT_DIAMOND + deny + pressure;
 
   let revealBonus=0;
   const rev=S.tableau.coveredByRev?.[idx] || [];
@@ -950,7 +953,7 @@ function cloneState(S){
   return {
     age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
     modernSwapStillAvailable:S.modernSwapStillAvailable,
-    players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:{...p.feat}})),
+    players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
     tableau:{
       slots:S.tableau.slots.map(s=>({...s})),
       coveredBy:S.tableau.coveredBy,
@@ -1143,10 +1146,9 @@ function scoreFor(S,i){
   const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)];
   let vp=[0,0];
   if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
-  vp[0]+=foodVP(a); vp[1]+=foodVP(b);
+  vp[0]+=flowerVP(a); vp[1]+=flowerVP(b);
   vp[0]+=technologyVP(tech[0],tech[1]);
   vp[1]+=technologyVP(tech[1],tech[0]);
-  if(hasCalamityMalus(a)) vp[0]-=5; if(hasCalamityMalus(b)) vp[1]-=5;
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
   return vp[i];
@@ -1249,7 +1251,7 @@ function render(){
     const suitMetric={
       S:String(swords(p.cards)),
       H:String(breakthroughCount(p.cards)),
-      C:String(foodVP(p.cards)),
+      C:String(flowerVP(p.cards)),
       D:culturePlacements[i]
     };
     const suitCols=Object.entries(bySuit).map(([s,cards])=>{

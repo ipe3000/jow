@@ -29,9 +29,10 @@ function mcSettings(level){
  return {strength,tScale,eps,modernSwapSimulations};
 }
 const DEFAULT_MC_CFG=mcSettings(1);
-const HEURISTIC_WEIGHT_FOOD=0.8;
+const HEURISTIC_WEIGHT_FLOWER=1.55;
 const HEURISTIC_WEIGHT_DIAMOND=0.9;
-const HEURISTIC_FOOD_LOW_CARD_BONUS=-0.2;
+function makeFeat(){return {sw:0,hMask:0,hLinks:0,dMask:0,dAdj:0,rankCounts:Array(13).fill(0),clubCounts:Array(13).fill(0)};}
+function cloneFeat(feat){return {...feat,rankCounts:feat.rankCounts.slice(),clubCounts:feat.clubCounts.slice()};}
 const pct=(x,n)=>n?`${(100*x/n).toFixed(1)}%`:"0.0%"; const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 const fmtPct=v=>`${(100*v).toFixed(1)}%`;
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -50,10 +51,11 @@ function breakthroughCount(cards){
   .reduce((m,c)=>m|bitOfRank(c.rank),0);
  return techSequenceCountFromMask(hMask);
 }
-function foodVP(cards){return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+clubValue(c),0);}
-function hasCalamityMalus(cards){return cards.filter(c=>c.rank==="K").length>=3;}
+function flowerContribution(rankCount,clubCount){if(!clubCount) return 0; if(rankCount>=4) return clubCount*5; if(rankCount>=3) return clubCount*2; return 0;}
+function flowerVP(cards){const rankCounts=Array(13).fill(0),clubCounts=Array(13).fill(0); for(const c of cards){const idx=RANK_VAL[c.rank]-1; rankCounts[idx]++; if(c.suit==="C") clubCounts[idx]++;} let vp=0; for(let i=0;i<13;i++) vp+=flowerContribution(rankCounts[i],clubCounts[i]); return vp;}
+function flowerDeltaForCard(feat,card){const idx=RANK_VAL[card.rank]-1; const before=flowerContribution(feat.rankCounts[idx],feat.clubCounts[idx]); const rankAfter=feat.rankCounts[idx]+1; const clubAfter=feat.clubCounts[idx]+(card.suit==="C"?1:0); const after=flowerContribution(rankAfter,clubAfter); let bonus=after-before; if(card.suit!=="C" && feat.clubCounts[idx]>0){if(rankAfter===3) bonus+=0.45*feat.clubCounts[idx]; if(rankAfter===4) bonus+=0.7*feat.clubCounts[idx];} return bonus;}
 function diamondSequences(cards){const owned=new Set(cards.filter(c=>c.suit==="D").map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
-function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], food=[foodVP(a),foodVP(b)], king=[hasCalamityMalus(a)?-5:0,hasCalamityMalus(b)?-5:0]; const techVP=[technologyVP(tech[0],tech[1]),technologyVP(tech[1],tech[0])]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[MILITARY_VP,0]; else if(sw[1]>sw[0]) military=[0,MILITARY_VP]; vp[0]+=military[0]+food[0]+techVP[0]+king[0]; vp[1]+=military[1]+food[1]+techVP[1]+king[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,food,techVP,culture,kingPenalty:king,swords:sw,breakthrough:tech};}
+function scoreFromCards(a,b){const sw=[swords(a),swords(b)], tech=[breakthroughCount(a),breakthroughCount(b)], flowers=[flowerVP(a),flowerVP(b)]; const techVP=[technologyVP(tech[0],tech[1]),technologyVP(tech[1],tech[0])]; let vp=[0,0], military=[0,0]; if(sw[0]>sw[1]) military=[MILITARY_VP,0]; else if(sw[1]>sw[0]) military=[0,MILITARY_VP]; vp[0]+=military[0]+flowers[0]+techVP[0]; vp[1]+=military[1]+flowers[1]+techVP[1]; const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); return {vp,military,flowers,techVP,culture,swords:sw,breakthrough:tech};}
 function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f0.hLinks>=4) return {winner:0,reason:"Technological Supremacy (>=4 Technological Sequences)"}; if(f1.hLinks>=4) return {winner:1,reason:"Technological Supremacy (>=4 Technological Sequences)"}; if(f0.sw-f1.sw>=7) return {winner:0,reason:"Military Supremacy"}; if(f1.sw-f0.sw>=7) return {winner:1,reason:"Military Supremacy"}; return null;}
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
 function ucbSelect(stats,total,c=0.9){
@@ -93,14 +95,13 @@ function technologyVP(myCount,oppCount){
 }
 function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13)|(mask>>>12); return popcount13(mask&rot);}
 function swordValue(card){const v=RANK_VAL[card.rank]; return (v<=9)?1:2;}
-function clubValue(card){const v=RANK_VAL[card.rank]; return (v<=9)?1:2;}
-function kingRiskFromCount(k){if(k>=3) return -3; if(k===2) return -0.6; return 0;}
 function updateFeat(feat,card){
+ const idx=RANK_VAL[card.rank]-1;
+ feat.rankCounts[idx]+=1;
+ if(card.suit==="C") feat.clubCounts[idx]+=1;
  if(card.suit==="S") feat.sw+=swordValue(card);
  if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hLinks=techSequenceCountFromMask(feat.hMask);}
- if(card.suit==="C") feat.cSum+=clubValue(card);
  if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}
- if(card.rank==="K") feat.kCount+=1;
 }
 function staticTakeValue(S,player,card){
  const f=S.players[player].feat;
@@ -110,22 +111,13 @@ function staticTakeValue(S,player,card){
   const nm=(f.hMask|bitOfRank(card.rank))&MASK13;
   dBt=techSequenceCountFromMask(nm)-f.hLinks;
  }
- let dFood=0;
- if(card.suit==="C"){
-  const before=f.cSum;
-  const after=f.cSum+clubValue(card);
-  dFood=after-before;
-  if(clubValue(card)===1) dFood+=HEURISTIC_FOOD_LOW_CARD_BONUS;
- }
+ const dFlower=flowerDeltaForCard(f,card);
  let dDia=0;
  if(card.suit==="D"){
   const nm=(f.dMask|bitOfRank(card.rank))&MASK13;
   dDia=diamondAdjFromMask(nm)-f.dAdj;
  }
- const oldKR=kingRiskFromCount(f.kCount);
- const newKR=kingRiskFromCount(f.kCount+(card.rank==="K"?1:0));
- const dKing=newKR-oldKR;
- return dSw*1.2+dBt*1.6+dFood*HEURISTIC_WEIGHT_FOOD+dDia*HEURISTIC_WEIGHT_DIAMOND+dKing*1.4;
+ return dSw*1.25+dBt*1.7+dFlower*HEURISTIC_WEIGHT_FLOWER+dDia*HEURISTIC_WEIGHT_DIAMOND;
 }
 function cheapEvalTake(S,player,idx){
  const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
@@ -137,23 +129,16 @@ function cheapEvalTake(S,player,idx){
   const nm=(me.hMask|bitOfRank(card.rank))&MASK13;
   dBt=techSequenceCountFromMask(nm)-me.hLinks;
  }
- let dFood=0;
- if(card.suit==="C"){
-  const before=me.cSum;
-  const after=me.cSum+clubValue(card);
-  dFood=after-before;
-  if(clubValue(card)===1) dFood+=HEURISTIC_FOOD_LOW_CARD_BONUS;
- }
+ const dFlower=flowerDeltaForCard(me,card);
  let dDia=0;
  if(card.suit==="D"){
   const nm=(me.dMask|bitOfRank(card.rank))&MASK13;
   dDia=diamondAdjFromMask(nm)-me.dAdj;
  }
- const oldKR=kingRiskFromCount(me.kCount);
- const newKR=kingRiskFromCount(me.kCount+(card.rank==="K"?1:0));
- const dKing=newKR-oldKR;
- const deny=(card.suit==="S"?0.2:0)+(card.suit==="H"?0.15:0), pressure=Math.max(0,opp.sw-me.sw-5)*0.05;
- const baseScore=dSw*1.2+dBt*1.6+dFood*HEURISTIC_WEIGHT_FOOD+dDia*HEURISTIC_WEIGHT_DIAMOND+dKing*1.4+deny+pressure;
+ const rankIdx=RANK_VAL[card.rank]-1;
+ const denyFlower=(opp.clubCounts[rankIdx]||0)*(opp.rankCounts[rankIdx]>=2?0.35:0.15);
+ const deny=(card.suit==="S"?0.24:0)+(card.suit==="H"?0.18:0)+denyFlower, pressure=Math.max(0,opp.sw-me.sw-5)*0.05;
+ const baseScore=dSw*1.25+dBt*1.7+dFlower*HEURISTIC_WEIGHT_FLOWER+dDia*HEURISTIC_WEIGHT_DIAMOND+deny+pressure;
  let revealBonus=0;
  const rev=S.tableau.coveredByRev?.[idx]||[];
  for(const upperIdx of rev){
@@ -174,7 +159,7 @@ function choosePlayoutMove(S,eps=0.2){
  let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
 }
 function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const p=S.current; if(canWinNowWithTwoPicks(S,p,moves,2)!==null) return true; if(S.age==="ancient" && remainingCardsThisAge(S)>6) return false; const vals=moves.map(i=>cheapEvalTake(S,p,i)).sort((a,b)=>b-a); const single=vals[0], two=vals[0]+0.85*vals[1]; const reserveBias=S.age==="ancient"?0.35:0.15; return two>single+(0.55+reserveBias);}
-function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:{...p.feat}})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{jokerDouble:S.events.jokerDouble?S.events.jokerDouble.slice():[0,0],jokerDoubleByAge:S.events.jokerDoubleByAge?{ancient:S.events.jokerDoubleByAge.ancient.slice(),modern:S.events.jokerDoubleByAge.modern.slice()}:{ancient:[0,0],modern:[0,0]},modernSwap:S.events.modernSwap||0}};}
+function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,modernSwapStillAvailable:S.modernSwapStillAvailable,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{jokerDouble:S.events.jokerDouble?S.events.jokerDouble.slice():[0,0],jokerDoubleByAge:S.events.jokerDoubleByAge?{ancient:S.events.jokerDoubleByAge.ancient.slice(),modern:S.events.jokerDoubleByAge.modern.slice()}:{ancient:[0,0],modern:[0,0]},modernSwap:S.events.modernSwap||0}};}
 function finalReward(S,perspective){if(S.winner!==undefined) return S.winner===perspective?1:0; const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp; if(sc[perspective]>sc[1-perspective]) return 1; if(sc[perspective]===sc[1-perspective]) return 0.5; return 0;}
 function modernOpeningSwingScore(S,startPlayer){
  const C=cloneState(S);
@@ -403,7 +388,7 @@ function chooseMove(S,strategy,mcCfg){const moves=legalMoves(S); if(!moves.lengt
  if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++; S.events.jokerDoubleByAge[S.age][S.current]++;}
  return chooseMoveUcb(S,legalMoves(S),mcCfg,3);}
 function simulateOne(startPlayer,strA,strB,mcCfg){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
- const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}},{cards:[],joker:true,feat:{sw:0,hMask:0,hLinks:0,cSum:0,dMask:0,dAdj:0,kCount:0}}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],jokerDoubleByAge:{ancient:[0,0],modern:[0,0]},modernSwap:0}};
+ const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:true,feat:makeFeat()}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],jokerDoubleByAge:{ancient:[0,0],modern:[0,0]},modernSwap:0}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat,mcCfg); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv,mcCfg);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
  const vpA=score.vp[0], vpB=score.vp[1]; const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA===vpB?"draw":(vpA>vpB?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Points draw":"Points");
  return {vpA,vpB,margin:vpB-vpA,winner,winBy,score,events:S.events};}
@@ -431,7 +416,7 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  const margins=out.map(x=>x.margin); renderHistogram(margins);
  renderRows(document.getElementById("scoreTable"),[["Average VP",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP",out.map(x=>x.vpA).sort((a,b)=>a-b)[Math.floor(out.length/2)],out.map(x=>x.vpB).sort((a,b)=>a-b)[Math.floor(out.length/2)]],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
  renderRows(document.getElementById("eventTable"),[["Technological Supremacy",pct(out.filter(x=>x.winBy.includes("Technological Supremacy")).length,out.length)],["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Wonder Extra Turn AI A",avg(out.map(x=>x.events.jokerDouble[0])).toFixed(2)+" / game"],["Wonder Extra Turn AI B",avg(out.map(x=>x.events.jokerDouble[1])).toFixed(2)+" / game"],["Wonder Extra Turn AI A — Ancient Age",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[0])).toFixed(2)+" / game"],["Wonder Extra Turn AI A — Modern Age",avg(out.map(x=>x.events.jokerDoubleByAge.modern[0])).toFixed(2)+" / game"],["Wonder Extra Turn AI B — Ancient Age",avg(out.map(x=>x.events.jokerDoubleByAge.ancient[1])).toFixed(2)+" / game"],["Wonder Extra Turn AI B — Modern Age",avg(out.map(x=>x.events.jokerDoubleByAge.modern[1])).toFixed(2)+" / game"],["Wonder Seize Initiative (Modern Age)",pct(out.filter(x=>x.events.modernSwap>0).length,out.length)],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
- renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.techVP[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.techVP[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Calamity penalty (>=3 Kings)",avg(pointsOnly.map(x=>x.score.kingPenalty[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.kingPenalty[1])).toFixed(2)],["Calamity frequency (>=3 Kings | points-only games)",`${pct(pointsOnly.filter(x=>x.score.kingPenalty[0]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`,`${pct(pointsOnly.filter(x=>x.score.kingPenalty[1]<0).length,pointsOnly.length)} (n=${pointsOnly.length})`],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
+ renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.techVP[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.techVP[1])).toFixed(2)],["Flower VP (♣)",avg(pointsOnly.map(x=>x.score.flowers[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.flowers[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
 statusEl.textContent="Ready. Statistical core aligned with game rules.";
