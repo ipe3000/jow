@@ -1148,10 +1148,13 @@ function render(){
   }
 
   const sg=document.getElementById("statusGrid");
-  const sw=G.players.map(p=>swords(p.cards)), tp=G.players.map(p=>breakthroughCount(p.cards));
+  const sw=G.players.map(p=>swords(p.cards));
+  const techVp=scoreGame().detail.tech;
   const militaryLead=sw[1]-sw[0];
+  const technologyLead=techVp[1]-techVp[0];
   const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"You");
-  sg.innerHTML=`<div class='pill'>Tech Seq.: ${tp[0]} / ${tp[1]}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
+  const techSupremacyLabel=technologyLead===0?"Tie":(technologyLead>0?"AI":"You");
+  sg.innerHTML=`<div class='pill'>Tech. Supr.: ${techSupremacyLabel} +${Math.abs(technologyLead)}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
