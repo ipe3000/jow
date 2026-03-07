@@ -1,6 +1,8 @@
 const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[10,6,3];
 const MILITARY_VP=5;
+const CALAMITY_KING_THRESHOLD=3;
+const CALAMITY_VP_PENALTY=-5;
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Foods"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
@@ -211,6 +213,10 @@ function swordValue(card){
 function foodPower(cards){
   return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);
 }
+function calamityPenalty(cards){
+  const kings=cards.filter(c=>c.rank==="K").length;
+  return kings>=CALAMITY_KING_THRESHOLD?CALAMITY_VP_PENALTY:0;
+}
 function updateFeat(feat,card){
   if(card.suit==="S") feat.sw+=swordValue(card);
   if(card.suit==="C") feat.cw+=swordValue(card);
@@ -297,8 +303,9 @@ function scoreGame(){
     cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
   }
 
-  const vp0=military[0]+food[0]+technology[0]+culture[0];
-  const vp1=military[1]+food[1]+technology[1]+culture[1];
+  const calamity=[calamityPenalty(p0),calamityPenalty(p1)];
+  const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
+  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
 
   return {
     vp:[vp0,vp1],
@@ -310,7 +317,8 @@ function scoreGame(){
       tech:technology,
       techAwards,
       culture,
-      cultureAwards
+      cultureAwards,
+      calamity
     }
   };
 }
@@ -445,7 +453,8 @@ function showEndgameModal(sc,winner){
     {label:"Military",a:sc.detail.military[0],b:sc.detail.military[1]},
     {label:"Foods",a:sc.detail.food[0],b:sc.detail.food[1]},
     {label:"Technology",a:sc.detail.tech[0],b:sc.detail.tech[1]},
-    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]}
+    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]},
+    {label:"Calamity (3+ Kings)",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
@@ -1068,6 +1077,8 @@ function scoreFor(S,i){
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(techSeqs[k]) vp[techSeqs[k].o]+=v;});
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
   DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
+  vp[0]+=calamityPenalty(a);
+  vp[1]+=calamityPenalty(b);
   return vp[i];
 }
 
