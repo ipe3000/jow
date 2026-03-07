@@ -1160,7 +1160,7 @@ function render(){
 
   const sg=document.getElementById("statusGrid");
   const sw=G.players.map(p=>swords(p.cards));
-  const techBreakthrough=scoreGame().detail.breakthrough;
+  const techBreakthrough=G.players.map(p=>breakthroughCount(p.cards));
   const militaryLead=sw[1]-sw[0];
   const technologyLead=techBreakthrough[1]-techBreakthrough[0];
   const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"You");
