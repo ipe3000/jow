@@ -1,5 +1,6 @@
 const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[6,3,1];
+const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
 const CALAMITY_KING_THRESHOLD=3;
 const CALAMITY_VP_PENALTY=-2;
@@ -273,6 +274,22 @@ function suitSequences(cards,suit){
 function diamondSequences(cards){
   return suitSequences(cards,"D");
 }
+function awardTopThreePlacements(seqs,ownerKey="owner"){
+  const vp=[0,0];
+  const placements=[];
+  for(let i=0;i<Math.min(DIAMOND_VP_AWARDS.length,seqs.length);i++){
+    const award=DIAMOND_VP_AWARDS[i];
+    const owner=seqs[i][ownerKey];
+    vp[owner]+=award;
+    placements.push({owner,vp:award,length:seqs[i].length});
+  }
+  let sweepBonusOwner=null;
+  if(placements.length===3 && placements.every(p=>p.owner===placements[0].owner)){
+    sweepBonusOwner=placements[0].owner;
+    vp[sweepBonusOwner]+=TOP_THREE_SWEEP_BONUS;
+  }
+  return {vp,placements,sweepBonusOwner};
+}
 function sequencePlacementByPlayer(playersCards,suit){
   const placements=[[],[]];
   const labels=["1st","2nd","3rd"];
@@ -295,23 +312,18 @@ function scoreGame(){
   const technology=[0,0];
   const techSeqs=[...suitSequences(p0,"H").map(s=>({...s,owner:0})),...suitSequences(p1,"H").map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const techAwards=[];
-  for(let i=0;i<Math.min(DIAMOND_VP_AWARDS.length,techSeqs.length);i++){
-    const award=DIAMOND_VP_AWARDS[i];
-    technology[techSeqs[i].owner]+=award;
-    techAwards.push({owner:techSeqs[i].owner,vp:award,length:techSeqs[i].length});
-  }
+  const techTopThree=awardTopThreePlacements(techSeqs,"owner");
+  technology[0]+=techTopThree.vp[0];
+  technology[1]+=techTopThree.vp[1];
+  const techAwards=techTopThree.placements;
 
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
     .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const awards=DIAMOND_VP_AWARDS;
-  const cultureAwards=[];
-  for(let i=0;i<Math.min(awards.length,seqs.length);i++){
-    const award=awards[i];
-    culture[seqs[i].owner]+=award;
-    cultureAwards.push({owner:seqs[i].owner,vp:award,length:seqs[i].length});
-  }
+  const cultureTopThree=awardTopThreePlacements(seqs,"owner");
+  culture[0]+=cultureTopThree.vp[0];
+  culture[1]+=cultureTopThree.vp[1];
+  const cultureAwards=cultureTopThree.placements;
 
   const calamity=[calamityPenalty(p0),calamityPenalty(p1)];
   const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
@@ -326,8 +338,10 @@ function scoreGame(){
       food,
       tech:technology,
       techAwards,
+      techSweepBonusOwner:techTopThree.sweepBonusOwner,
       culture,
       cultureAwards,
+      cultureSweepBonusOwner:cultureTopThree.sweepBonusOwner,
       calamity
     }
   };
@@ -470,6 +484,12 @@ function showEndgameModal(sc,winner){
   const technologyText=sc.detail.techAwards.length
     ? sc.detail.techAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
     : "No Technology bonus assigned.";
+  const technologySweepText=sc.detail.techSweepBonusOwner===null
+    ? ""
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.techSweepBonusOwner].name} (1st, 2nd, 3rd in Technology)`;
+  const cultureSweepText=sc.detail.cultureSweepBonusOwner===null
+    ? ""
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.cultureSweepBonusOwner].name} (1st, 2nd, 3rd in Culture)`;
   d.innerHTML=`
     <h3>Game Over</h3>
     <p>Victory points summary:</p>
@@ -485,8 +505,8 @@ function showEndgameModal(sc,winner){
       </tfoot>
     </table>
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus Technology: ${technologyText}</p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus Culture: ${cultureText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus Technology: ${technologyText}${technologySweepText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus Culture: ${cultureText}${cultureSweepText}</p>
     <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Draw" : `🏆 ${G.players[winner].name} wins`}</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -1082,9 +1102,13 @@ function scoreFor(S,i){
   if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
   if(food[0]>food[1]) vp[0]+=MILITARY_VP; else if(food[1]>food[0]) vp[1]+=MILITARY_VP;
   const techSeqs=[...suitSequences(a,"H").map(s=>({...s,o:0})),...suitSequences(b,"H").map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  DIAMOND_VP_AWARDS.forEach((v,k)=>{if(techSeqs[k]) vp[techSeqs[k].o]+=v;});
+  const techTopThree=awardTopThreePlacements(techSeqs,"o");
+  vp[0]+=techTopThree.vp[0];
+  vp[1]+=techTopThree.vp[1];
   const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]) vp[seqs[k].o]+=v;});
+  const cultureTopThree=awardTopThreePlacements(seqs,"o");
+  vp[0]+=cultureTopThree.vp[0];
+  vp[1]+=cultureTopThree.vp[1];
   vp[0]+=calamityPenalty(a);
   vp[1]+=calamityPenalty(b);
   return vp[i];
