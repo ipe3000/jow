@@ -72,7 +72,17 @@ function makeDeck(){
   for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}}
   return cards;
 }
-function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
+function getAgeSlotCount(age){
+  return TABLEAU_MODEL[age].reduce((total,row)=>total+row.xs.length,0);
+}
+function splitDeckForAges(deck){
+  const shuffled=shuffle(deck.slice());
+  const ancientCount=getAgeSlotCount("ancient");
+  const modernCount=getAgeSlotCount("modern");
+  const ancient=shuffled.slice(0,ancientCount);
+  const modern=shuffled.slice(ancientCount,ancientCount+modernCount);
+  return {ancient:shuffle(ancient),modern:shuffle(modern)};
+}
 function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
 function cardClass(c){return `suit${c.suit}`;}
 function sortCardsByRank(cards){
@@ -332,9 +342,7 @@ function checkSupremacy(){
 }
 
 function newGame(firstPlayer=null){
-  const base=shuffle(makeDeck());
-  const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient"));
-  const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
+  const {ancient,modern}=splitDeckForAges(makeDeck());
   const first=firstPlayer===0||firstPlayer===1?firstPlayer:(Math.random()<0.5?0:1);
   G={
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,

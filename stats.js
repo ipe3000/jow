@@ -39,7 +39,15 @@ const pct=(x,n)=>n?`${(100*x/n).toFixed(1)}%`:"0.0%"; const avg=a=>a.length?a.re
 const fmtPct=v=>`${(100*v).toFixed(1)}%`;
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function makeDeck(){const cards=[];let id=0; for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}} return cards;}
-function ageOf(rank){return ["A","2","3","4","5","6"].includes(rank)?"ancient":"modern";}
+function getAgeSlotCount(age){return TABLEAU_MODEL[age].reduce((total,row)=>total+row.xs.length,0);}
+function splitDeckForAges(deck){
+ const shuffled=shuffle(deck.slice());
+ const ancientCount=getAgeSlotCount("ancient");
+ const modernCount=getAgeSlotCount("modern");
+ const ancient=shuffled.slice(0,ancientCount);
+ const modern=shuffled.slice(ancientCount,ancientCount+modernCount);
+ return {ancient:shuffle(ancient),modern:shuffle(modern)};
+}
 function buildRows(model){let idx=0; return model.map((cfg,row)=>cfg.xs.map((gridX,col)=>({idx:idx++,row,col,gridX})));}
 function buildCovering(rows){const total=rows.reduce((a,r)=>a+r.length,0), coveredBy=Array.from({length:total},()=>[]); for(let r=0;r<rows.length-1;r++){const upper=rows[r],lower=rows[r+1],map=new Map(lower.map(s=>[s.gridX,s.idx])); for(const slot of upper){const c1=map.get(slot.gridX-0.5),c2=map.get(slot.gridX+0.5); if(c1!==undefined) coveredBy[slot.idx].push(c1); if(c2!==undefined) coveredBy[slot.idx].push(c2);}} return coveredBy;}
 function buildCoveredByRev(coveredBy){const rev=Array.from({length:coveredBy.length},()=>[]); for(let i=0;i<coveredBy.length;i++) for(const c of coveredBy[i]) rev[c].push(i); return rev;}
@@ -357,7 +365,7 @@ function maybeUseJokerNow(S,moves){
 function chooseMove(S,strategy,mcCfg){const moves=legalMoves(S); if(!moves.length) return null; if(moves.length===1) return moves[0]; if(strategy==="random") return moves[Math.floor(Math.random()*moves.length)]; if(strategy==="greedy"){let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;}
  if(maybeUseJokerNow(S,moves)){S.players[S.current].joker=false; S.picksLeftThisTurn=2; S.events.jokerDouble[S.current]++; S.events.jokerDoubleByAge[S.age][S.current]++;}
  return chooseMoveUcb(S,legalMoves(S),mcCfg,3);}
-function simulateOne(startPlayer,strA,strB,mcCfg){const base=shuffle(makeDeck()); const ancient=shuffle(base.filter(c=>ageOf(c.rank)==="ancient")); const modern=shuffle(base.filter(c=>ageOf(c.rank)==="modern"));
+function simulateOne(startPlayer,strA,strB,mcCfg){const {ancient,modern}=splitDeckForAges(makeDeck());
  const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:true,feat:makeFeat()}],picksLeftThisTurn:1,modernSwapStillAvailable:false,events:{jokerDouble:[0,0],jokerDoubleByAge:{ancient:[0,0],modern:[0,0]},modernSwap:0}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat,mcCfg); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv,mcCfg);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
  const vpA=score.vp[0], vpB=score.vp[1]; const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA===vpB?"draw":(vpA>vpB?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Points draw":"Points");
