@@ -348,10 +348,10 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.sw - f1.sw >= 7) return {winner:0,reason:"Military Supremacy (>=7 Swords lead)"};
-  if(f1.sw - f0.sw >= 7) return {winner:1,reason:"Military Supremacy (>=7 Swords lead)"};
-  if(f0.cw - f1.cw >= 7) return {winner:0,reason:"Food Supremacy (>=7 Food Power lead)"};
-  if(f1.cw - f0.cw >= 7) return {winner:1,reason:"Food Supremacy (>=7 Food Power lead)"};
+  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Military Supremacy (>=8 Swords lead)"};
+  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Military Supremacy (>=8 Swords lead)"};
+  if(f0.cw - f1.cw >= 8) return {winner:0,reason:"Food Supremacy (>=8 Food Power lead)"};
+  if(f1.cw - f0.cw >= 8) return {winner:1,reason:"Food Supremacy (>=8 Food Power lead)"};
   return null;
 }
 
@@ -673,10 +673,10 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.sw - f1.sw >= 7) return 0;
-  if(f1.sw - f0.sw >= 7) return 1;
-  if(f0.cw - f1.cw >= 7) return 0;
-  if(f1.cw - f0.cw >= 7) return 1;
+  if(f0.sw - f1.sw >= 8) return 0;
+  if(f1.sw - f0.sw >= 8) return 1;
+  if(f0.cw - f1.cw >= 8) return 0;
+  if(f1.cw - f0.cw >= 8) return 1;
   return null;
 }
 function flipNewSim(tableau,acc){
