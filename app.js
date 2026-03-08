@@ -1,8 +1,8 @@
 const SUITS=["S","D","H","C"];
-const DIAMOND_VP_AWARDS=[10,6,3];
-const MILITARY_VP=5;
+const DIAMOND_VP_AWARDS=[6,3,1];
+const MILITARY_VP=2;
 const CALAMITY_KING_THRESHOLD=3;
-const CALAMITY_VP_PENALTY=-5;
+const CALAMITY_VP_PENALTY=-2;
 const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Foods"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
