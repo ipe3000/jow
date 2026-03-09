@@ -12,18 +12,18 @@ const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
 const TABLEAU_MODEL={
   ancient:[
-    {faceDown:false,xs:[2,4]},
+    {faceDown:false,xs:[2,3,4]},
     {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
-    {faceDown:false,xs:[0,1,2,3,4,5,6]},
+    {faceDown:false,xs:[1,2,3,4,5]},
     {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},
-    {faceDown:false,xs:[1,2,3,4,5]}
+    {faceDown:false,xs:[0,1,2,3,4,5,6]}
   ],
   modern:[
-    {faceDown:false,xs:[2,5]},
-    {faceDown:true,xs:[1.5,2.5,3.5,4.5,5.5]},
-    {faceDown:false,xs:[0,1,2,3,4,5,6,7]},
-    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5,6.5]},
-    {faceDown:false,xs:[1,2,3,4,5,6]}
+    {faceDown:false,xs:[2,3,4]},
+    {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
+    {faceDown:false,xs:[1,2,3,4,5]},
+    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},
+    {faceDown:false,xs:[0,1,2,3,4,5,6]}
   ]
 };
 let G=null;
@@ -73,6 +73,15 @@ function makeDeck(){
   for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}}
   return cards;
 }
+function removeSecretSetupCards(deck){
+  const candidates=deck.filter(c=>
+    (c.suit==="C"||c.suit==="S") && (c.rank==="A"||c.rank==="K")
+  );
+  if(candidates.length<4) return deck.slice();
+  const chosen=shuffle(candidates.slice()).slice(0,2);
+  const removedIds=new Set(chosen.map(c=>c.id));
+  return deck.filter(c=>!removedIds.has(c.id));
+}
 function getAgeSlotCount(age){
   return TABLEAU_MODEL[age].reduce((total,row)=>total+row.xs.length,0);
 }
@@ -83,6 +92,9 @@ function splitDeckForAges(deck){
   const ancient=shuffled.slice(0,ancientCount);
   const modern=shuffled.slice(ancientCount,ancientCount+modernCount);
   return {ancient:shuffle(ancient),modern:shuffle(modern)};
+}
+function makeUnknownModernDeck(){
+  return shuffle(makeDeck()).slice(0,getAgeSlotCount("modern"));
 }
 function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
 function cardClass(c){return `suit${c.suit}`;}
@@ -356,7 +368,8 @@ function checkSupremacy(){
 }
 
 function newGame(firstPlayer=null){
-  const {ancient,modern}=splitDeckForAges(makeDeck());
+  const trimmedDeck=removeSecretSetupCards(makeDeck());
+  const {ancient,modern}=splitDeckForAges(trimmedDeck);
   const first=firstPlayer===0||firstPlayer===1?firstPlayer:(Math.random()<0.5?0:1);
   G={
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
@@ -539,17 +552,16 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     noSwapState.age="modern";
     noSwapState.current=nextFirst;
     noSwapState.picksLeftThisTurn=1;
-    // IMPORTANT: buildTableau pops cards from the provided deck array.
-    // We must preserve noSwapState.decks.modern for subsequent evaluations.
-    noSwapState.tableau=buildTableau("modern",noSwapState.decks.modern.slice());
+    // Keep Modern simulations secret-friendly: use an unknown synthetic deck.
+    noSwapState.tableau=buildTableau("modern",makeUnknownModernDeck());
     noSwapState.modernSwapStillAvailable=true;
     const swapState=cloneGameState();
     swapState.players[second].joker=false;
     swapState.age="modern";
     swapState.current=second;
     swapState.picksLeftThisTurn=1;
-    // Same here: keep the simulation deck intact for downstream look-ahead.
-    swapState.tableau=buildTableau("modern",swapState.decks.modern.slice());
+    // Same for the swap branch: evaluate from hidden-information assumptions.
+    swapState.tableau=buildTableau("modern",makeUnknownModernDeck());
     swapState.modernSwapStillAvailable=true;
 
     // Keep this branch lightweight: it runs during the Ancient->Modern transition
@@ -790,7 +802,7 @@ function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
   noSwap.age="modern";
   noSwap.current=nextFirst;
   noSwap.picksLeftThisTurn=1;
-  noSwap.tableau=buildTableau("modern",shuffleInPlace(noSwap.decks.modern.slice()));
+  noSwap.tableau=buildTableau("modern",makeUnknownModernDeck());
   hideFaceDownInfoForSim(noSwap.tableau);
   noSwap.modernSwapStillAvailable=true;
 
@@ -799,7 +811,7 @@ function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
   swap.age="modern";
   swap.current=second;
   swap.picksLeftThisTurn=1;
-  swap.tableau=buildTableau("modern",shuffleInPlace(swap.decks.modern.slice()));
+  swap.tableau=buildTableau("modern",makeUnknownModernDeck());
   hideFaceDownInfoForSim(swap.tableau);
   swap.modernSwapStillAvailable=true;
 
@@ -828,14 +840,14 @@ function evaluateModernTurnOneSwing(baseState,nextFirst,aiPlayer=1){
   aiAsFirst.age="modern";
   aiAsFirst.current=second;
   aiAsFirst.picksLeftThisTurn=1;
-  aiAsFirst.tableau=buildTableau("modern",aiAsFirst.decks.modern.slice());
+  aiAsFirst.tableau=buildTableau("modern",makeUnknownModernDeck());
   const firstPick=bestGreedyMoveForPlayer(aiAsFirst,aiPlayer).val;
 
   const aiAsSecond=cloneState(baseState);
   aiAsSecond.age="modern";
   aiAsSecond.current=nextFirst;
   aiAsSecond.picksLeftThisTurn=1;
-  aiAsSecond.tableau=buildTableau("modern",aiAsSecond.decks.modern.slice());
+  aiAsSecond.tableau=buildTableau("modern",makeUnknownModernDeck());
   const opener=bestGreedyMoveForPlayer(aiAsSecond,nextFirst);
   if(opener.idx!==null) applyTakeSim(aiAsSecond,opener.idx);
   const reply=bestGreedyMoveForPlayer(aiAsSecond,aiPlayer).val;
@@ -848,7 +860,7 @@ function advanceAgeSim(S){
     S.current=start;
     S.picksLeftThisTurn=1;
     S.age="modern";
-    S.tableau=buildTableau("modern",shuffleInPlace(S.decks.modern.slice()));
+    S.tableau=buildTableau("modern",makeUnknownModernDeck());
     hideFaceDownInfoForSim(S.tableau);
     return;
   }
