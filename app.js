@@ -4,9 +4,8 @@ const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
 const CALAMITY_KING_THRESHOLD=3;
 const CALAMITY_VP_PENALTY=-2;
-const SUIT_NAME={S:"♠ Military",D:"♦ Culture",H:"♥ Technology",C:"♣ Foods"};
+const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
-const SUIT_ABBR={S:"MILI",D:"CULT",H:"TECH",C:"FOOD"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
@@ -360,10 +359,10 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"Military Supremacy (>=8 Swords lead)"};
-  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"Military Supremacy (>=8 Swords lead)"};
-  if(f0.cw - f1.cw >= 8) return {winner:0,reason:"Food Supremacy (>=8 Food Power lead)"};
-  if(f1.cw - f0.cw >= 8) return {winner:1,reason:"Food Supremacy (>=8 Food Power lead)"};
+  if(f0.sw - f1.sw >= 8) return {winner:0,reason:"♠ Supremacy (>=8 lead)"};
+  if(f1.sw - f0.sw >= 8) return {winner:1,reason:"♠ Supremacy (>=8 lead)"};
+  if(f0.cw - f1.cw >= 8) return {winner:0,reason:"♣ Supremacy (>=8 lead)"};
+  if(f1.cw - f0.cw >= 8) return {winner:1,reason:"♣ Supremacy (>=8 lead)"};
   return null;
 }
 
@@ -485,24 +484,24 @@ function showEndgameModal(sc,winner){
   d.classList.remove("modernSwapModal");
   const p0=G.players[0].name, p1=G.players[1].name;
   const rows=[
-    {label:"Military",a:sc.detail.military[0],b:sc.detail.military[1]},
-    {label:"Foods",a:sc.detail.food[0],b:sc.detail.food[1]},
-    {label:"Technology",a:sc.detail.tech[0],b:sc.detail.tech[1]},
-    {label:"Culture",a:sc.detail.culture[0],b:sc.detail.culture[1]},
+    {label:"♠",a:sc.detail.military[0],b:sc.detail.military[1]},
+    {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
+    {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
+    {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
     {label:"Calamity (3+ Kings)",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
-    : "No Culture bonus assigned.";
+    : "No ♦ bonus assigned.";
   const technologyText=sc.detail.techAwards.length
     ? sc.detail.techAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
-    : "No Technology bonus assigned.";
+    : "No ♥ bonus assigned.";
   const technologySweepText=sc.detail.techSweepBonusOwner===null
     ? ""
-    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.techSweepBonusOwner].name} (1st, 2nd, 3rd in Technology)`;
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.techSweepBonusOwner].name} (1st, 2nd, 3rd in ♥)`;
   const cultureSweepText=sc.detail.cultureSweepBonusOwner===null
     ? ""
-    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.cultureSweepBonusOwner].name} (1st, 2nd, 3rd in Culture)`;
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.cultureSweepBonusOwner].name} (1st, 2nd, 3rd in ♦)`;
   d.innerHTML=`
     <h3>Game Over</h3>
     <p>Victory points summary:</p>
@@ -518,8 +517,8 @@ function showEndgameModal(sc,winner){
       </tfoot>
     </table>
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus Technology: ${technologyText}${technologySweepText}</p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus Culture: ${cultureText}${cultureSweepText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus ♥: ${technologyText}${technologySweepText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus ♦: ${cultureText}${cultureSweepText}</p>
     <div class='winnerBanner ${winner===null?"draw":""}'>${winner===null?"🤝 Draw" : `🏆 ${G.players[winner].name} wins`}</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -577,7 +576,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     }
     if(scoreDelta > 0.03){
       pl.joker=false;
-      log(`${pl.name} builds Wonder (Seize Initiative) and goes first in the Modern Age.`);
+      log(`${pl.name} uses Joker (Seize Initiative) and goes first in Phase Two.`);
       return Promise.resolve(second);
     }
     return Promise.resolve(nextFirst);
@@ -592,7 +591,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
       render();
     }
 
-    d.innerHTML=`<h3>Modern Age</h3><p>Use Wonder to start first?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Yes</button></div>`;
+    d.innerHTML=`<h3>Phase Two</h3><p>Use Joker to start first?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Yes</button></div>`;
     d.showModal();
     let settled=false;
     const settle=(value)=>{
@@ -604,7 +603,7 @@ function maybeModernSwap(nextFirst,modernTableauPreview=null){
     };
     d.oncancel=()=>{settle(nextFirst);};
     d.querySelector("#no").onclick=()=>{d.close(); settle(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} builds Wonder (Seize Initiative) and goes first in the Modern Age.`); settle(second);};
+    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} uses Joker (Seize Initiative) and goes first in Phase Two.`); settle(second);};
   });
 }
 
@@ -1171,7 +1170,7 @@ async function endTurnOrAge(){
       G.pendingAIRemovals=[];
       G.current=start;
       G.picksLeftThisTurn=1;
-      log(`Ancient Age ends. Modern Age starts with ${G.players[G.current].name}.`);
+      log(`Phase One ends. Phase Two starts with ${G.players[G.current].name}.`);
       render(); return;
     }
     G.ended=true;
@@ -1191,7 +1190,7 @@ async function endTurnOrAge(){
 
 function render(){
   if(!G) return;
-  document.getElementById("agePill").textContent=`Age: ${G.age==="ancient"?"Ancient":"Modern"}`;
+  document.getElementById("agePill").textContent=`Phase: ${G.age==="ancient"?"One":"Two"}`;
   const sideTurn=document.getElementById("sideTurnPill");
   if(G.ended){
     sideTurn.textContent="Turn: -";
@@ -1209,7 +1208,7 @@ function render(){
   const foodLead=food[1]-food[0];
   const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"You");
   const foodSupremacyLabel=foodLead===0?"Tie":(foodLead>0?"AI":"You");
-  sg.innerHTML=`<div class='pill'>Food Supr.: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>Wonders: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>Mil. Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
+  sg.innerHTML=`<div class='pill'>♣ Supr.: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>Jokers: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>♠ Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
 
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
@@ -1264,7 +1263,7 @@ function render(){
     const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!isSlotGone(slots[p]));
     e.className=`card ${s.removed?"removed":""} ${s.pendingAIPick?"aiPickedPreview":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!isSlotGone(s)?cardClass(s.card):""} ${acc[i]&&!s.faceDown&&!isSlotGone(s)?"open accessible":""} ${!acc[i]&&!isSlotGone(s)&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
     e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
-    e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='small'>${SUIT_ABBR[s.card.suit]||SUIT_NAME[s.card.suit]}</div><div class='cornerL'></div><div class='cornerR'></div><div class='big'>${label(s.card)}</div>`;
+    e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='cornerL'></div><div class='cornerR'></div><div class='big'>${label(s.card)}</div>`;
     e.onclick=()=>onHumanCardClick(i);
     t.appendChild(e);
   }
