@@ -18,6 +18,7 @@ const TABLEAU_MODEL={
     {faceDown:false,xs:[0,1,2,3,4,5,6]}
   ],
   modern:[
+    {faceDown:true,xs:[2.5,3.5]},
     {faceDown:false,xs:[2,3,4]},
     {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
     {faceDown:false,xs:[1,2,3,4,5]},
@@ -71,15 +72,6 @@ function makeDeck(){
   const cards=[]; let id=0;
   for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}}
   return cards;
-}
-function removeSecretSetupCards(deck){
-  const candidates=deck.filter(c=>
-    (c.suit==="C"||c.suit==="S") && (c.rank==="A"||c.rank==="K")
-  );
-  if(candidates.length<4) return deck.slice();
-  const chosen=shuffle(candidates.slice()).slice(0,2);
-  const removedIds=new Set(chosen.map(c=>c.id));
-  return deck.filter(c=>!removedIds.has(c.id));
 }
 function getAgeSlotCount(age){
   return TABLEAU_MODEL[age].reduce((total,row)=>total+row.xs.length,0);
@@ -367,8 +359,7 @@ function checkSupremacy(){
 }
 
 function newGame(firstPlayer=null){
-  const trimmedDeck=removeSecretSetupCards(makeDeck());
-  const {ancient,modern}=splitDeckForAges(trimmedDeck);
+  const {ancient,modern}=splitDeckForAges(makeDeck());
   const first=firstPlayer===0||firstPlayer===1?firstPlayer:(Math.random()<0.5?0:1);
   G={
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
