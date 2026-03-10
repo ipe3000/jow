@@ -368,7 +368,7 @@ function newGame(firstPlayer=null){
       {name:"You",cards:[],joker:true,isAI:false,feat:makeFeat()},
       {name:"AI",cards:[],joker:true,isAI:true,feat:makeFeat()}
     ],
-    lastTaken:null, picksLeftThisTurn:1, modernSwapStillAvailable:false, pendingSwapChoice:null,
+    lastTaken:null, picksLeftThisTurn:1,
     pendingAIRemovals:[]
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
@@ -449,18 +449,17 @@ function takeCard(idx){
     return;
   }
 
-  if(G.age==="modern" && G.modernSwapStillAvailable) G.modernSwapStillAvailable=false;
   endTurnOrAge();
 }
 
 function onHumanCardClick(idx){
-  if(!G || G.ended || G.pendingSwapChoice) return;
+  if(!G || G.ended) return;
   if(G.players[G.current].isAI) return;
   takeCard(idx);
 }
 
 function canUseJokerDouble(player=G.current){
-  return !G.ended && G.current===player && G.players[player].joker && G.picksLeftThisTurn===1 && !G.pendingSwapChoice;
+  return !G.ended && G.current===player && G.players[player].joker && G.picksLeftThisTurn===1;
 }
 function useJokerDouble(player=G.current){
   if(!canUseJokerDouble(player)) return false;
@@ -531,71 +530,8 @@ function showSupremacyModal({winner,reason}){
   d.showModal();
 }
 
-function maybeModernSwap(nextFirst,modernTableauPreview=null){
-  const second=1-nextFirst;
-  const pl=G.players[second];
-  G.modernSwapStillAvailable=true;
-  if(!pl.joker) return Promise.resolve(nextFirst);
-  if(pl.isAI){
-    const evalStart=performance.now();
-    const noSwapState=cloneGameState();
-    noSwapState.age="modern";
-    noSwapState.current=nextFirst;
-    noSwapState.picksLeftThisTurn=1;
-    // Keep Modern simulations secret-friendly: use an unknown synthetic deck.
-    noSwapState.tableau=buildTableau("modern",makeUnknownModernDeck());
-    noSwapState.modernSwapStillAvailable=true;
-    const swapState=cloneGameState();
-    swapState.players[second].joker=false;
-    swapState.age="modern";
-    swapState.current=second;
-    swapState.picksLeftThisTurn=1;
-    // Same for the swap branch: evaluate from hidden-information assumptions.
-    swapState.tableau=buildTableau("modern",makeUnknownModernDeck());
-    swapState.modernSwapStillAvailable=true;
-
-    // Keep this branch lightweight: it runs during the Ancient->Modern transition
-    // on the main thread and can otherwise feel like a UI freeze.
-    const transitionRollouts=32;
-    const evNo=estimatePolicyEV(noSwapState,1,transitionRollouts);
-    const evSwap=estimatePolicyEV(swapState,1,transitionRollouts);
-    const turn1Swing=evaluateModernTurnOneSwing(cloneState(noSwapState),nextFirst,1);
-    const scoreDelta=(evSwap-evNo) + turn1Swing*0.12;
-    const elapsed=performance.now()-evalStart;
-    if(elapsed>1200){
-      log(`AI evaluates Modern initiative (${elapsed.toFixed(0)}ms).`);
-    }
-    if(scoreDelta > 0.03){
-      pl.joker=false;
-      log(`${pl.name} uses Joker (Seize Initiative) and goes first in Phase Two.`);
-      return Promise.resolve(second);
-    }
-    return Promise.resolve(nextFirst);
-  }
-  return new Promise(resolve=>{
-    const d=document.getElementById("modal");
-    d.classList.add("modernSwapModal");
-
-    G.pendingSwapChoice={type:"modernSwap"};
-    if(modernTableauPreview){
-      G.tableau=modernTableauPreview;
-      render();
-    }
-
-    d.innerHTML=`<h3>Phase Two</h3><p>Use Joker to start first?</p><div class='optRow'><button id='no'>No</button><button id='yes'>Yes</button></div>`;
-    d.showModal();
-    let settled=false;
-    const settle=(value)=>{
-      if(settled) return;
-      settled=true;
-      G.pendingSwapChoice=null;
-      d.classList.remove("modernSwapModal");
-      resolve(value);
-    };
-    d.oncancel=()=>{settle(nextFirst);};
-    d.querySelector("#no").onclick=()=>{d.close(); settle(nextFirst);};
-    d.querySelector("#yes").onclick=()=>{pl.joker=false; d.close(); log(`${pl.name} uses Joker (Seize Initiative) and goes first in Phase Two.`); settle(second);};
-  });
+function maybeModernSwap(nextFirst){
+  return Promise.resolve(nextFirst);
 }
 
 function aiSelectMove(){
@@ -643,7 +579,6 @@ function cloneGameState(){
     ended:G.ended,
     nextAgeFirst:G.nextAgeFirst,
     picksLeftThisTurn:G.picksLeftThisTurn,
-    modernSwapStillAvailable:G.modernSwapStillAvailable,
     players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
     tableau:simTableau,
     decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
@@ -785,33 +720,7 @@ function shouldUseJokerInPlayout(S){
   const reserveBias=S.age==="ancient"?0.35:0.15;
   return two>single+(0.55+reserveBias);
 }
-function chooseModernSwapSim(S,nextFirst,aiPlayer=1){
-  const second=1-nextFirst;
-  if(!S.players[second].joker) return nextFirst;
-  const noSwap=cloneState(S);
-  noSwap.age="modern";
-  noSwap.current=nextFirst;
-  noSwap.picksLeftThisTurn=1;
-  noSwap.tableau=buildTableau("modern",makeUnknownModernDeck());
-  hideFaceDownInfoForSim(noSwap.tableau);
-  noSwap.modernSwapStillAvailable=true;
-
-  const swap=cloneState(S);
-  swap.players[second].joker=false;
-  swap.age="modern";
-  swap.current=second;
-  swap.picksLeftThisTurn=1;
-  swap.tableau=buildTableau("modern",makeUnknownModernDeck());
-  hideFaceDownInfoForSim(swap.tableau);
-  swap.modernSwapStillAvailable=true;
-
-  const evNo=estimatePolicyEV(noSwap,aiPlayer,16);
-  const evSwap=estimatePolicyEV(swap,aiPlayer,16);
-  const turn1Swing=evaluateModernTurnOneSwing(S,nextFirst,aiPlayer);
-  if((evSwap-evNo) + turn1Swing*0.12 > 0.03){
-    S.players[second].joker=false;
-    return second;
-  }
+function chooseModernSwapSim(S,nextFirst){
   return nextFirst;
 }
 function bestGreedyMoveForPlayer(S,player){
@@ -846,7 +755,6 @@ function evaluateModernTurnOneSwing(baseState,nextFirst,aiPlayer=1){
 function advanceAgeSim(S){
   if(S.age==="ancient"){
     const start=chooseModernSwapSim(S,S.nextAgeFirst,1);
-    S.modernSwapStillAvailable=true;
     S.current=start;
     S.picksLeftThisTurn=1;
     S.age="modern";
@@ -883,7 +791,6 @@ function applyTakeSim(S,idx){
   const accAfter=accessibilitySim(S.tableau);
   flipNewSim(S.tableau,accAfter);
   const sup=checkSupremacySim(S); if(sup!==null){S.ended=true; S.winner=sup; return;}
-  if(S.age==="modern" && S.modernSwapStillAvailable) S.modernSwapStillAvailable=false;
   if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
   else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
 }
@@ -908,7 +815,6 @@ function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
 function cloneState(S){
   return {
     age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
-    modernSwapStillAvailable:S.modernSwapStillAvailable,
     players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
     tableau:{
       slots:S.tableau.slots.map(s=>({...s})),
@@ -1118,7 +1024,7 @@ function scoreFor(S,i){
 
 function maybeRunAiTurn(){
   if(aiTimer){clearTimeout(aiTimer); aiTimer=null;}
-  if(!G||G.ended||G.pendingSwapChoice) return;
+  if(!G||G.ended) return;
   if(!G.players[G.current].isAI) return;
   const forced=legalOpenMoves(G.tableau);
   if(forced.length===0){
