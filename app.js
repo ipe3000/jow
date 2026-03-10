@@ -1105,8 +1105,7 @@ function render(){
   const foodLead=food[1]-food[0];
   const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"You");
   const foodSupremacyLabel=foodLead===0?"Tie":(foodLead>0?"AI":"You");
-  sg.innerHTML=`<div class='pill'>♣ Supr.: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>Jokers: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div><div class='pill'>♠ Supr.: ${supremacyLabel} +${Math.abs(militaryLead)}</div>`;
-
+  sg.innerHTML=`<div class='pill'>♠ Diff: ${supremacyLabel} +${Math.abs(militaryLead)}</div><div class='pill'>♣ Diff: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>Jokers: ${G.players[0].joker?"✅":"❌"} / ${G.players[1].joker?"✅":"❌"}</div>`;
   const useBtn=document.getElementById("useJokerBtn");
   useBtn.disabled=!canUseJokerDouble(0);
   useBtn.onclick=()=>{ if(useJokerDouble(0)) render(); };
