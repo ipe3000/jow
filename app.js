@@ -478,7 +478,7 @@ function showEndgameModal(sc,winner){
     {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
     {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
     {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Calamity (3+ Kings)",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
