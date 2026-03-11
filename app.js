@@ -497,7 +497,7 @@ function showEndgameModal(sc,winner){
     <p>Victory points summary:</p>
     <table class='endSummary'>
       <thead>
-        <tr><th></th><th>P1</th><th>P2</th></tr>
+        <tr><th></th><th>You</th><th>AI</th></tr>
       </thead>
       <tbody>
         ${rows.map(r=>`<tr><td>${r.label}</td><td><strong>${r.a}</strong></td><td><strong>${r.b}</strong></td></tr>`).join("")}
