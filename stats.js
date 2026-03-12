@@ -101,16 +101,28 @@ function staticTakeValue(S,player,card){
 }
 function isBlackSuit(card){return card.suit==="S" || card.suit==="C";}
 function blackCardCount(cards){let n=0; for(const c of cards) if(isBlackSuit(c)) n++; return n;}
+function supremacyLead(featMe,featOpp){
+ const swGap=featMe.sw-featOpp.sw;
+ const cwGap=featMe.cw-featOpp.cw;
+ return Math.max(swGap,cwGap);
+}
+function supremacyLeadNorm(featMe,featOpp){return Math.max(-1,Math.min(1,supremacyLead(featMe,featOpp)/8));}
 function totalBlackTakeValue(S,player,idx){
  const slot=S.tableau.slots[idx];
  if(!slot || slot.removed || slot.faceDown) return -Infinity;
  const card=slot.card;
- const mineBlack=blackCardCount(S.players[player].cards);
- const oppBlack=blackCardCount(S.players[1-player].cards);
- const blackDelta=(isBlackSuit(card)?1:0);
- const denyBlack=(isBlackSuit(card)?1:0);
- const aheadPenalty=Math.max(0,(mineBlack+blackDelta)-oppBlack-2)*0.05;
- return blackDelta*100 + denyBlack*25 - aheadPenalty;
+ const me=S.players[player].feat, opp=S.players[1-player].feat;
+ const dSw=(card.suit==="S")?swordValue(card):0;
+ const dFood=(card.suit==="C")?swordValue(card):0;
+ const beforeLead=supremacyLead(me,opp);
+ const afterLead=Math.max((me.sw+dSw)-opp.sw,(me.cw+dFood)-opp.cw);
+ const progressGain=afterLead-beforeLead;
+ const cardPower=dSw+dFood;
+ const immediateSup=((me.sw+dSw)-opp.sw>=8 || (me.cw+dFood)-opp.cw>=8)?1:0;
+ const denyPressure=Math.max(0,Math.max(opp.sw-me.sw,opp.cw-me.cw)-5);
+ const blackDeny=isBlackSuit(card)?(1+0.35*denyPressure):0;
+ const blackCountBias=isBlackSuit(card)?0.2:0;
+ return cardPower*12 + progressGain*18 + immediateSup*80 + blackDeny + blackCountBias;
 }
 function cheapEvalTake(S,player,idx){
  const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
@@ -158,11 +170,14 @@ function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLe
 function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{jokerDouble:S.events.jokerDouble?S.events.jokerDouble.slice():[0,0],jokerDoubleByAge:S.events.jokerDoubleByAge?{ancient:S.events.jokerDoubleByAge.ancient.slice(),modern:S.events.jokerDoubleByAge.modern.slice()}:{ancient:[0,0],modern:[0,0]}}};}
 function finalReward(S,perspective,mode="insta"){
  if(mode==="total_black"){
+  if(S.winner!==undefined) return S.winner===perspective?1:0;
+  const me=S.players[perspective].feat, opp=S.players[1-perspective].feat;
+  const supremacyComponent=supremacyLeadNorm(me,opp);
   const mine=blackCardCount(S.players[perspective].cards);
-  const opp=blackCardCount(S.players[1-perspective].cards);
-  const diff=mine-opp;
-  const normalized=Math.max(-1,Math.min(1,diff/12));
-  return 0.5+0.5*normalized;
+  const oppBlack=blackCardCount(S.players[1-perspective].cards);
+  const blackComponent=Math.max(-1,Math.min(1,(mine-oppBlack)/12));
+  const blended=Math.max(-1,Math.min(1,supremacyComponent*0.85+blackComponent*0.15));
+  return 0.5+0.5*blended;
  }
  if(S.winner!==undefined) return S.winner===perspective?1:0;
  const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp;
@@ -394,6 +409,38 @@ function maybeUseJokerNow(S,moves){
  const threshold=jokerDecisionThreshold(S,p);
  return v2>v1+threshold;
 }
+function maybeUseJokerForSupremacy(S,moves){
+ if(!(S.players[S.current].joker && S.picksLeftThisTurn===1 && moves.length>=2)) return false;
+ const p=S.current;
+ const baseLead=supremacyLead(S.players[p].feat,S.players[1-p].feat);
+ let bestOne=baseLead;
+ for(const idx of moves){
+  const C=cloneState(S);
+  applyTake(C,idx);
+  bestOne=Math.max(bestOne,supremacyLead(C.players[p].feat,C.players[1-p].feat));
+ }
+ let bestTwo=baseLead;
+ const firstMoves=moves
+  .map(i=>({i,v:totalBlackTakeValue(S,p,i)}))
+  .sort((a,b)=>b.v-a.v)
+  .slice(0,Math.min(4,moves.length))
+  .map(x=>x.i);
+ for(const first of firstMoves){
+  const C=cloneState(S);
+  C.players[p].joker=false;
+  C.picksLeftThisTurn=2;
+  applyTake(C,first);
+  bestTwo=Math.max(bestTwo,supremacyLead(C.players[p].feat,C.players[1-p].feat));
+  for(const second of legalMoves(C)){
+   const D=cloneState(C);
+   applyTake(D,second);
+   bestTwo=Math.max(bestTwo,supremacyLead(D.players[p].feat,D.players[1-p].feat));
+  }
+ }
+ const oppLead=supremacyLead(S.players[1-p].feat,S.players[p].feat);
+ const urgency=oppLead>=5?0:1;
+ return (bestTwo-bestOne)>=(urgency?1:2);
+}
 function chooseMove(S,strategy,mcCfg){
  const moves=legalMoves(S);
  if(!moves.length) return null;
@@ -449,14 +496,14 @@ function chooseMove(S,strategy,mcCfg){
   const safeMove=findSafeSingleMove(S,S.current,moves);
   if(safeMove!==null) return safeMove;
 
-  if(maybeUseJokerNow(S,moves)){
+  if(maybeUseJokerForSupremacy(S,moves) || maybeUseJokerNow(S,moves)){
    S.players[S.current].joker=false;
    S.picksLeftThisTurn=2;
    S.events.jokerDouble[S.current]++;
    S.events.jokerDoubleByAge[S.age][S.current]++;
   }
 
-  return chooseMoveUcb(S,legalMoves(S),mcCfg,{topK:4,rewardMode:"total_black",exploration:0.8,tBias:1.2});
+  return chooseMoveUcb(S,legalMoves(S),mcCfg,{topK:4,rewardMode:"total_black",exploration:0.65,tBias:1.45});
  }
 
  if(maybeUseJokerNow(S,moves)){
