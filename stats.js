@@ -99,6 +99,19 @@ function staticTakeValue(S,player,card){
  }
  return dSw*1.25+dFood*HEURISTIC_WEIGHT_FOOD+dTech*HEURISTIC_WEIGHT_TECH+dDia*HEURISTIC_WEIGHT_DIAMOND;
 }
+function isBlackSuit(card){return card.suit==="S" || card.suit==="C";}
+function blackCardCount(cards){let n=0; for(const c of cards) if(isBlackSuit(c)) n++; return n;}
+function totalBlackTakeValue(S,player,idx){
+ const slot=S.tableau.slots[idx];
+ if(!slot || slot.removed || slot.faceDown) return -Infinity;
+ const card=slot.card;
+ const mineBlack=blackCardCount(S.players[player].cards);
+ const oppBlack=blackCardCount(S.players[1-player].cards);
+ const blackDelta=(isBlackSuit(card)?1:0);
+ const denyBlack=(isBlackSuit(card)?1:0);
+ const aheadPenalty=Math.max(0,(mineBlack+blackDelta)-oppBlack-2)*0.05;
+ return blackDelta*100 + denyBlack*25 - aheadPenalty;
+}
 function cheapEvalTake(S,player,idx){
  const slot=S.tableau.slots[idx]; if(!slot || slot.removed || slot.faceDown) return -Infinity;
  const card=slot.card;
@@ -130,15 +143,27 @@ function cheapEvalTake(S,player,idx){
  }
  return baseScore+revealBonus;
 }
-function choosePlayoutMove(S,eps=0.2){
+function choosePlayoutMove(S,eps=0.2,mode="insta"){
  const moves=legalMoves(S); if(!moves.length) return null;
  if(moves.length===1) return moves[0];
  if(Math.random()<eps) return moves[Math.floor(Math.random()*moves.length)];
- let best=moves[0],bestV=-Infinity; for(const idx of moves){const v=cheapEvalTake(S,S.current,idx); if(v>bestV){bestV=v;best=idx;}} return best;
+ let best=moves[0],bestV=-Infinity;
+ for(const idx of moves){
+  const v=mode==="total_black"?totalBlackTakeValue(S,S.current,idx):cheapEvalTake(S,S.current,idx);
+  if(v>bestV){bestV=v;best=idx;}
+ }
+ return best;
 }
 function shouldUseJokerInPlayout(S){if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false; const moves=legalMoves(S); if(moves.length<2) return false; const p=S.current; if(canWinNowWithTwoPicks(S,p,moves,2)!==null) return true; if(S.age==="ancient" && remainingCardsThisAge(S)>6) return false; const vals=moves.map(i=>cheapEvalTake(S,p,i)).sort((a,b)=>b-a); const single=vals[0], two=vals[0]+0.85*vals[1]; const reserveBias=S.age==="ancient"?0.35:0.15; return two>single+(0.55+reserveBias);}
 function cloneState(S){return {age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{jokerDouble:S.events.jokerDouble?S.events.jokerDouble.slice():[0,0],jokerDoubleByAge:S.events.jokerDoubleByAge?{ancient:S.events.jokerDoubleByAge.ancient.slice(),modern:S.events.jokerDoubleByAge.modern.slice()}:{ancient:[0,0],modern:[0,0]}}};}
 function finalReward(S,perspective,mode="insta"){
+ if(mode==="total_black"){
+  const mine=blackCardCount(S.players[perspective].cards);
+  const opp=blackCardCount(S.players[1-perspective].cards);
+  const diff=mine-opp;
+  const normalized=Math.max(-1,Math.min(1,diff/12));
+  return 0.5+0.5*normalized;
+ }
  if(S.winner!==undefined) return S.winner===perspective?1:0;
  const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp;
  if(mode==="scoring"){
@@ -191,9 +216,11 @@ function chooseModernSwap(S,nextFirst,mcCfg=DEFAULT_MC_CFG){
 }
 function advanceAge(S,mcCfg=DEFAULT_MC_CFG){if(S.age==="ancient"){const start=chooseModernSwap(S,S.nextAgeFirst,mcCfg); S.current=start; S.picksLeftThisTurn=1; S.age="modern"; S.tableau=buildTableau("modern",S.decks.modern); return;} S.ended=true;}
 function applyTake(S,idx,mcCfg=DEFAULT_MC_CFG){const slot=S.tableau.slots[idx]; slot.removed=true; S.players[S.current].cards.push(slot.card); updateFeat(S.players[S.current].feat,slot.card); S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1); flipNew(S.tableau.slots,accessibility(S.tableau)); const sup=checkSupremacy(S); if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner; return;} if(S.tableau.slots.every(s=>s.removed)) advanceAge(S,mcCfg); else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}}
-function randomPlayout(S,perspective=S.current,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(shouldUseJokerInPlayout(S)){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=choosePlayoutMove(S,mcCfg.eps); if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;continue;} applyTake(S,idx,mcCfg);} return finalReward(S,perspective,rewardMode);}
+function randomPlayout(S,perspective=S.current,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){let guard=600; while(!S.ended && guard-->0){const moves=legalMoves(S); if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} if(shouldUseJokerInPlayout(S)){S.players[S.current].joker=false;S.picksLeftThisTurn=2;} const idx=choosePlayoutMove(S,mcCfg.eps,rewardMode); if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;continue;} applyTake(S,idx,mcCfg);} return finalReward(S,perspective,rewardMode);}
 function chooseMoveUcb(S,moves,mcCfg,{topK=3,rewardMode="insta",exploration=0.9,tBias=1}={}){
- const ordered=moves.map(i=>({idx:i,v:cheapEvalTake(S,S.current,i)})).sort((a,b)=>b.v-a.v);
+ const ordered=moves
+  .map(i=>({idx:i,v:rewardMode==="total_black"?totalBlackTakeValue(S,S.current,i):cheapEvalTake(S,S.current,i)}))
+  .sort((a,b)=>b.v-a.v);
  const cand=ordered.slice(0,Math.min(topK,ordered.length)).map(x=>x.idx);
  if(moves.length>cand.length && Math.random()<0.1){const extra=moves.filter(m=>!cand.includes(m)); if(extra.length) cand.push(extra[Math.floor(Math.random()*extra.length)]);}
  const left=S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);
@@ -402,6 +429,34 @@ function chooseMove(S,strategy,mcCfg){
    S.events.jokerDoubleByAge[S.age][S.current]++;
   }
   return chooseMoveUcb(S,legalMoves(S),mcCfg,{topK:3,rewardMode:"insta",exploration:0.9,tBias:1});
+ }
+
+ if(strategy==="mc_total_black"){
+  const instantWin=canWinNowWithOnePick(S,S.current,moves);
+  if(instantWin!==null) return instantWin;
+
+  if(S.players[S.current].joker && S.picksLeftThisTurn===1){
+   const twoPickWin=canWinNowWithTwoPicks(S,S.current,moves,4);
+   if(twoPickWin!==null){
+    S.players[S.current].joker=false;
+    S.picksLeftThisTurn=2;
+    S.events.jokerDouble[S.current]++;
+    S.events.jokerDoubleByAge[S.age][S.current]++;
+    return twoPickWin;
+   }
+  }
+
+  const safeMove=findSafeSingleMove(S,S.current,moves);
+  if(safeMove!==null) return safeMove;
+
+  if(maybeUseJokerNow(S,moves)){
+   S.players[S.current].joker=false;
+   S.picksLeftThisTurn=2;
+   S.events.jokerDouble[S.current]++;
+   S.events.jokerDoubleByAge[S.age][S.current]++;
+  }
+
+  return chooseMoveUcb(S,legalMoves(S),mcCfg,{topK:4,rewardMode:"total_black",exploration:0.8,tBias:1.2});
  }
 
  if(maybeUseJokerNow(S,moves)){
