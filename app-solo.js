@@ -4,8 +4,7 @@ const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
 const CALAMITY_KING_THRESHOLD=2;
 const CALAMITY_VP_PENALTY=-2;
-const SOLO_SUPREMACY_THRESHOLD_AI=5;
-const SOLO_SUPREMACY_THRESHOLD_HUMAN=12;
+const SOLO_SUPREMACY_THRESHOLD_AI=4;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
@@ -383,8 +382,6 @@ function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
   if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
-  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♠ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
-  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
   return null;
 }
 
@@ -727,8 +724,6 @@ function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
   if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
-  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
-  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
   return null;
 }
 function flipNewSim(tableau,acc){
