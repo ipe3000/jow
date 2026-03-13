@@ -381,10 +381,12 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♠ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
-  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
-  if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
-  if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
+  const swordDiff=f0.sw-f1.sw;
+  const foodDiff=f0.cw-f1.cw;
+  if(swordDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♠ You immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
+  if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
+  if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
+  if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   return null;
 }
 
@@ -762,10 +764,12 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
-  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
-  if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
-  if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
+  const swordDiff=f0.sw-f1.sw;
+  const foodDiff=f0.cw-f1.cw;
+  if(swordDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
+  if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
+  if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
+  if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   return null;
 }
 function flipNewSim(tableau,acc){
