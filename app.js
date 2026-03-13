@@ -2,7 +2,7 @@ const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[6,3,1];
 const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
-const CALAMITY_KING_THRESHOLD=3;
+const HUMAN_KING_PENALTY_MIN_KINGS=1;
 const CALAMITY_VP_PENALTY=-2;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
@@ -227,9 +227,10 @@ function swordValue(card){
 function foodPower(cards){
   return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);
 }
-function calamityPenalty(cards){
+function calamityPenalty(cards,applyPenalty=true){
+  if(!applyPenalty) return 0;
   const kings=cards.filter(c=>c.rank==="K").length;
-  return kings>=CALAMITY_KING_THRESHOLD?CALAMITY_VP_PENALTY:0;
+  return kings>=HUMAN_KING_PENALTY_MIN_KINGS?CALAMITY_VP_PENALTY:0;
 }
 function updateFeat(feat,card){
   if(card.suit==="S") feat.sw+=swordValue(card);
@@ -355,7 +356,7 @@ function scoreGame(){
   culture[1]+=cultureTopThree.vp[1];
   const cultureAwards=cultureTopThree.placements;
 
-  const calamity=[calamityPenalty(p0),calamityPenalty(p1)];
+  const calamity=[calamityPenalty(p0,true),calamityPenalty(p1,false)];
   const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
   const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
 
@@ -1045,8 +1046,8 @@ function scoreFor(S,i){
   const cultureTopThree=awardTopThreePlacements(seqs,"o");
   vp[0]+=cultureTopThree.vp[0];
   vp[1]+=cultureTopThree.vp[1];
-  vp[0]+=calamityPenalty(a);
-  vp[1]+=calamityPenalty(b);
+  vp[0]+=calamityPenalty(a,true);
+  vp[1]+=calamityPenalty(b,false);
   return vp[i];
 }
 
