@@ -3,7 +3,6 @@ const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9",
 const DIAMOND_VP_AWARDS=[6,3,1];
 const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
-const SOLO_SUPREMACY_THRESHOLD_AI=5;
 const SOLO_SUPREMACY_THRESHOLD_HUMAN=12;
 const CALAMITY_VP_PENALTY=-2;
 const SOLO_NON_HUMAN_PLAYER_INDEX=1;
@@ -134,7 +133,7 @@ function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13) | (
 function makeFeat(){return {sw:0,cw:0,hMask:0,hAdj:0,dMask:0,dAdj:0};}
 function cloneFeat(feat){return {...feat};}
 function updateFeat(feat,card){if(card.suit==="S") feat.sw+=swordValue(card); if(card.suit==="C") feat.cw+=swordValue(card); if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hAdj=diamondAdjFromMask(feat.hMask);} if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}}
-function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f1.sw-f0.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Military Supremacy"}; if(f0.cw-f1.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:"Food Supremacy"}; if(f1.cw-f0.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Food Supremacy"}; return null;}
+function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f0.cw-f1.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:"Food Supremacy"}; return null;}
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
 
 function applyTake(S,player,idx){

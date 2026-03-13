@@ -4,7 +4,6 @@ const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
 const HUMAN_KING_PENALTY_MIN_KINGS=1;
 const CALAMITY_VP_PENALTY=-2;
-const SOLO_SUPREMACY_THRESHOLD_AI=5;
 const SOLO_SUPREMACY_THRESHOLD_HUMAN=12;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
@@ -382,11 +381,8 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
-  const swordDiff=f0.sw-f1.sw;
   const foodDiff=f0.cw-f1.cw;
   if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
-  if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
-  if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   return null;
 }
 
@@ -764,11 +760,8 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
-  const swordDiff=f0.sw-f1.sw;
   const foodDiff=f0.cw-f1.cw;
   if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
-  if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
-  if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   return null;
 }
 function flipNewSim(tableau,acc){
