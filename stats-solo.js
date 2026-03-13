@@ -81,11 +81,6 @@ function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swor
 function suitSequences(cards,suit){const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
 function breakthroughCount(cards){return suitSequences(cards,"H").length;}
 function diamondSequences(cards){return suitSequences(cards,"D");}
-function soloAiRedSequenceBonus(cards){
- const heartsVp=suitSequences(cards,"H").reduce((sum,seq)=>sum+seq.length,0);
- const diamondsVp=suitSequences(cards,"D").reduce((sum,seq)=>sum+seq.length,0);
- return heartsVp+diamondsVp;
-}
 function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){if(!a&&!b)return rivalWinsTie?-1:0; if(!a)return -1; if(!b)return 1; if(a.length!==b.length)return a.length>b.length?1:-1; if(!ignoreHigh&&a.high!==b.high)return a.high>b.high?1:-1; return rivalWinsTie?-1:0;}
 function bestRedSuitSequence(cards){
  const best=suit=>{const seq=suitSequences(cards,suit); if(!seq.length) return null; return seq.slice().sort((x,y)=>y.length-x.length)[0];};
@@ -130,8 +125,7 @@ function scoreFromCards(a,b){
  const cultureTopThree=awardTopThreePlacements(seqs);
  const culture=[...cultureTopThree.vp]; vp[0]+=culture[0]; vp[1]+=culture[1];
  const calamity=[calamityPenalty(a,true),calamityPenalty(b,false)]; vp[0]+=calamity[0]; vp[1]+=calamity[1];
- const soloAiBonus=soloAiRedSequenceBonus(b); vp[SOLO_NON_HUMAN_PLAYER_INDEX]+=soloAiBonus;
- return {vp,military,food,tech,culture,calamity,soloAiBonus,swords:sw,breakthrough:[breakthroughCount(a),breakthroughCount(b)]};
+ return {vp,military,food,tech,culture,calamity,swords:sw,breakthrough:[breakthroughCount(a),breakthroughCount(b)]};
 }
 function swordValue(card){const v=RANK_VAL[card.rank]; return v<=9?1:2;}
 function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
@@ -140,7 +134,7 @@ function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13) | (
 function makeFeat(){return {sw:0,cw:0,hMask:0,hAdj:0,dMask:0,dAdj:0};}
 function cloneFeat(feat){return {...feat};}
 function updateFeat(feat,card){if(card.suit==="S") feat.sw+=swordValue(card); if(card.suit==="C") feat.cw+=swordValue(card); if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hAdj=diamondAdjFromMask(feat.hMask);} if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}}
-function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f0.sw-f1.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:"Military Supremacy"}; if(f1.sw-f0.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Military Supremacy"}; if(f0.cw-f1.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:"Food Supremacy"}; if(f1.cw-f0.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Food Supremacy"}; return null;}
+function checkSupremacy(S){const f0=S.players[0].feat, f1=S.players[1].feat; if(f1.sw-f0.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Military Supremacy"}; if(f0.cw-f1.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:"Food Supremacy"}; if(f1.cw-f0.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:"Food Supremacy"}; return null;}
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
 
 function applyTake(S,player,idx){
@@ -409,7 +403,7 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  const margins=out.map(x=>x.margin); renderHistogram(margins);
  renderRows(document.getElementById("scoreTable"),[["Average VP (points games)",avg(pointsOnly.map(x=>x.vpA)).toFixed(2),avg(pointsOnly.map(x=>x.vpB)).toFixed(2)],["Average VP (all games, incl. supremacy)",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP (points games)",median(pointsOnly.map(x=>x.vpA)),median(pointsOnly.map(x=>x.vpB))],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
  renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks (random)",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
- renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.tech[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.tech[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Solo red-sequence bonus VP (non-human only)",avg(pointsOnly.map(x=>0)).toFixed(2),avg(pointsOnly.map(x=>x.score.soloAiBonus||0)).toFixed(2)],["Calamity VP (A: 1+K, B: none)",avg(pointsOnly.map(x=>x.score.calamity[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.calamity[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
+ renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.tech[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.tech[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Calamity VP (A: 1+K, B: none)",avg(pointsOnly.map(x=>x.score.calamity[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.calamity[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
 statusEl.textContent="Ready. Solo-mode statistical core loaded.";
