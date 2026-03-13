@@ -285,6 +285,18 @@ function chooseMoveA(S,strategy,mcCfg){
  return chooseMoveUcb(S,moves,mcCfg,{topK:5,rewardMode:"scoring",exploration:0.75,tBias:1.25});
 }
 
+function shouldUseJokerForPlayer(S,moves){
+ if(!S.players[0].joker || moves.length<2) return false;
+ const sorted=moves
+  .map(i=>cheapEvalTake(S,0,i))
+  .sort((a,b)=>b-a);
+ const bestSingle=sorted[0]||-Infinity;
+ const bestDouble=(sorted[0]||-Infinity)+0.85*(sorted[1]||-Infinity);
+ const remaining=S.tableau.slots.reduce((n,s)=>n+(!s.removed?1:0),0);
+ const reserveBias=S.age==="ancient" && remaining>10 ? 0.35 : 0.15;
+ return bestDouble>bestSingle+(0.55+reserveBias);
+}
+
 function maybeAdvanceAge(S){
  if(!S.tableau.slots.every(s=>s.removed) || S.ended) return;
  if(S.age==="ancient"){
@@ -305,34 +317,39 @@ function maybeAdvanceAge(S){
  S.ended=true;
 }
 
-function simulateOne(startPlayer,strA,mcCfg){
+function simulateOne(_startPlayer,strA,mcCfg){
  const {ancient,modern}=splitDeckForAges(makeDeck());
- const S={age:"ancient",nextAgeFirst:1-startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:false,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
- if(startPlayer===1){
-  const openR=rivalOptionsForOpening(S);
-  if(openR.options.length){
-   const ridx=chooseRivalIdxForA(S,openR.options,"insta");
-   if(ridx!==null) applyTake(S,1,ridx);
-   S.events.rivalChoices+=openR.options.length>1?1:0;
-   S.events.rivalForced+=openR.options.length<=1?1:0;
-  }
- }
+ const S={age:"ancient",nextAgeFirst:1,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
  let guard=1200;
  while(!S.ended && guard-->0){
   maybeAdvanceAge(S);
   if(S.ended) break;
-  const mv=chooseMoveA(S,strA,mcCfg);
-  if(mv===null){S.ended=true; break;}
-  const aCard=S.tableau.slots[mv].card;
-  applyTake(S,0,mv);
+  const openingMoves=legalMoves(S);
+  if(!openingMoves.length){S.ended=true; break;}
+
+  const picksThisTurn=shouldUseJokerForPlayer(S,openingMoves)?2:1;
+  if(picksThisTurn===2) S.players[0].joker=false;
+
+  let lastPlayerCard=null;
+  for(let pick=0;pick<picksThisTurn;pick++){
+   const mv=chooseMoveA(S,strA,mcCfg);
+   if(mv===null){S.ended=true; break;}
+   lastPlayerCard=S.tableau.slots[mv].card;
+   applyTake(S,0,mv);
+   if(S.ended) break;
+   if(S.tableau.slots.every(s=>s.removed)) break;
+  }
   if(S.ended){maybeAdvanceAge(S); continue;}
   if(S.tableau.slots.every(s=>s.removed)){maybeAdvanceAge(S); continue;}
-  const rr=rivalOptionsForResponse(S,aCard);
-  if(rr.options.length){
-   const ridx=chooseRivalIdxForA(S,rr.options,"insta");
-   if(ridx!==null) applyTake(S,1,ridx);
-   S.events.rivalChoices+=rr.options.length>1?1:0;
-   S.events.rivalForced+=rr.options.length<=1?1:0;
+
+  if(lastPlayerCard){
+   const rr=rivalOptionsForResponse(S,lastPlayerCard);
+   if(rr.options.length){
+    const ridx=chooseRivalIdxForA(S,rr.options,"insta");
+    if(ridx!==null) applyTake(S,1,ridx);
+    S.events.rivalChoices+=rr.options.length>1?1:0;
+    S.events.rivalForced+=rr.options.length<=1?1:0;
+   }
   }
   maybeAdvanceAge(S);
  }
