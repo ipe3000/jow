@@ -2,7 +2,7 @@ const SUITS=["S","D","H","C"];
 const DIAMOND_VP_AWARDS=[6,3,1];
 const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
-const CALAMITY_KING_THRESHOLD=2;
+const HUMAN_KING_PENALTY_MIN_KINGS=1;
 const CALAMITY_VP_PENALTY=-2;
 const SOLO_SUPREMACY_THRESHOLD_AI=5;
 const SOLO_SUPREMACY_THRESHOLD_HUMAN=10;
@@ -233,7 +233,7 @@ function foodPower(cards){
 function calamityPenalty(cards,applyPenalty=true){
   if(!applyPenalty) return 0;
   const kings=cards.filter(c=>c.rank==="K").length;
-  return kings>=CALAMITY_KING_THRESHOLD?CALAMITY_VP_PENALTY:0;
+  return kings>=HUMAN_KING_PENALTY_MIN_KINGS?CALAMITY_VP_PENALTY:0;
 }
 function updateFeat(feat,card){
   if(card.suit==="S") feat.sw+=swordValue(card);
