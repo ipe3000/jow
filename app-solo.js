@@ -483,6 +483,24 @@ function resolveRivalChoice(idx){
 
 function startRivalSelection(playerCard){
   const open=legalOpenMoves(G.tableau);
+  if(G.phaseTwoOpeningRivalPickPending){
+    G.phaseTwoOpeningRivalPickPending=false;
+    if(open.length===0){
+      log("AI has no legal card to take.");
+      endTurnOrAge();
+      return;
+    }
+    G.awaitingRivalChoice=true;
+    G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
+    G.rivalChoiceReason="phase 2 opening pick: choose leftmost or rightmost unlocked card for AI";
+    if(G.rivalChoiceIndices.length===1){
+      resolveRivalChoice(G.rivalChoiceIndices[0]);
+      return;
+    }
+    log("Phase 2 opening AI pick: choose leftmost or rightmost unlocked card.");
+    render();
+    return;
+  }
   if(open.length===0){
     log("AI has no legal card to take.");
     endTurnOrAge();
@@ -493,18 +511,6 @@ function startRivalSelection(playerCard){
     return;
   }
   G.awaitingRivalChoice=true;
-  if(G.phaseTwoOpeningRivalPickPending){
-    G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
-    G.rivalChoiceReason="phase 2 opening pick: choose leftmost or rightmost unlocked card for AI";
-    G.phaseTwoOpeningRivalPickPending=false;
-    if(G.rivalChoiceIndices.length===1){
-      resolveRivalChoice(G.rivalChoiceIndices[0]);
-      return;
-    }
-    log("Phase 2 opening AI pick: choose leftmost or rightmost unlocked card.");
-    render();
-    return;
-  }
   const sameSuit=open.filter(i=>G.tableau.slots[i].card.suit===playerCard.suit);
   if(sameSuit.length===1){
     G.rivalChoiceReason=`same suit ${SUIT_NAME[playerCard.suit]} (forced)`;
@@ -1134,6 +1140,10 @@ async function endTurnOrAge(){
       G.picksLeftThisTurn=1;
       G.phaseTwoOpeningRivalPickPending=true;
       log(`Phase One ends. Phase Two starts with ${G.players[G.current].name}.`);
+      if(SOLO_MODE && G.current===1){
+        startRivalSelection(null);
+        return;
+      }
       render(); return;
     }
     G.ended=true;
