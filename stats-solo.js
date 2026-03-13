@@ -52,6 +52,12 @@ const HEURISTIC_WEIGHT_FOOD=1.25;
 const HEURISTIC_WEIGHT_TECH=0.9;
 const HEURISTIC_WEIGHT_DIAMOND=0.9;
 const pct=(x,n)=>n?`${(100*x/n).toFixed(1)}%`:"0.0%"; const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+function median(a){
+ if(!a.length) return 0;
+ const sorted=a.slice().sort((x,y)=>x-y);
+ const mid=Math.floor(sorted.length/2);
+ return sorted.length%2===0?(sorted[mid-1]+sorted[mid])/2:sorted[mid];
+}
 const fmtPct=v=>`${(100*v).toFixed(1)}%`;
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function makeDeck(){const cards=[];let id=0; for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}} return cards;}
@@ -394,7 +400,7 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  const pointsOnly=out.filter(x=>x.winBy==="Points");
  document.getElementById("kGames").textContent=String(out.length); document.getElementById("kAWin").textContent=pct(aWin,out.length); document.getElementById("kBWin").textContent=pct(bWin,out.length); document.getElementById("kDraw").textContent=pct(draw,out.length);
  const margins=out.map(x=>x.margin); renderHistogram(margins);
- renderRows(document.getElementById("scoreTable"),[["Average VP",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP",out.map(x=>x.vpA).sort((a,b)=>a-b)[Math.floor(out.length/2)],out.map(x=>x.vpB).sort((a,b)=>a-b)[Math.floor(out.length/2)]],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
+ renderRows(document.getElementById("scoreTable"),[["Average VP (points games)",avg(pointsOnly.map(x=>x.vpA)).toFixed(2),avg(pointsOnly.map(x=>x.vpB)).toFixed(2)],["Average VP (all games, incl. supremacy)",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP (points games)",median(pointsOnly.map(x=>x.vpA)),median(pointsOnly.map(x=>x.vpB))],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
  renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks (random)",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
  renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.tech[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.tech[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Calamity VP (A: 1+K, B: none)",avg(pointsOnly.map(x=>x.score.calamity[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.calamity[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
