@@ -58,6 +58,19 @@ function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swor
 function suitSequences(cards,suit){const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
 function breakthroughCount(cards){return suitSequences(cards,"H").length;}
 function diamondSequences(cards){return suitSequences(cards,"D");}
+function compareSequences(a,b){if(!a&&!b)return 0; if(!a)return -1; if(!b)return 1; if(a.length!==b.length)return a.length>b.length?1:-1; if(a.high!==b.high)return a.high>b.high?1:-1; return 0;}
+function bestRedSuitSequence(cards){
+ const best=suit=>{const seq=suitSequences(cards,suit); if(!seq.length) return null; return seq.slice().sort((x,y)=>y.length-x.length||y.high-x.high)[0];};
+ const h=best("H"), d=best("D"), cmp=compareSequences(h,d);
+ return cmp>=0?h:d;
+}
+function winnerOnVpWithRedTieBreak(cardsA,cardsB,vpA,vpB){
+ if(vpA!==vpB) return vpA>vpB?0:1;
+ const redA=bestRedSuitSequence(cardsA), redB=bestRedSuitSequence(cardsB);
+ const cmp=compareSequences(redA,redB);
+ if(cmp===0) return null;
+ return cmp>0?0:1;
+}
 function foodPower(cards){return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);}
 function calamityPenalty(cards){const kings=cards.filter(c=>c.rank==="K").length; return kings>=CALAMITY_KING_THRESHOLD?CALAMITY_VP_PENALTY:0;}
 function scoreFromCards(a,b){const sw=[swords(a),swords(b)], foodPowerByPlayer=[foodPower(a),foodPower(b)]; let vp=[0,0], military=[0,0], food=[0,0]; if(sw[0]>sw[1]) military=[MILITARY_VP,0]; else if(sw[1]>sw[0]) military=[0,MILITARY_VP]; if(foodPowerByPlayer[0]>foodPowerByPlayer[1]) food=[MILITARY_VP,0]; else if(foodPowerByPlayer[1]>foodPowerByPlayer[0]) food=[0,MILITARY_VP]; vp[0]+=military[0]+food[0]; vp[1]+=military[1]+food[1]; const techSeqs=[...suitSequences(a,"H").map(s=>({...s,o:0})),...suitSequences(b,"H").map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const tech=[0,0]; DIAMOND_VP_AWARDS.forEach((v,k)=>{if(techSeqs[k]){vp[techSeqs[k].o]+=v; tech[techSeqs[k].o]+=v;}}); const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high); const culture=[0,0]; DIAMOND_VP_AWARDS.forEach((v,k)=>{if(seqs[k]){vp[seqs[k].o]+=v; culture[seqs[k].o]+=v;}}); const calamity=[calamityPenalty(a),calamityPenalty(b)]; vp[0]+=calamity[0]; vp[1]+=calamity[1]; return {vp,military,food,tech,culture,calamity,swords:sw,breakthrough:[breakthroughCount(a),breakthroughCount(b)]};}
@@ -186,9 +199,9 @@ function finalReward(S,perspective,mode="insta"){
   const normalized=Math.max(-1,Math.min(1,margin/20));
   return 0.5+0.5*normalized;
  }
- if(sc[perspective]>sc[1-perspective]) return 1;
- if(sc[perspective]===sc[1-perspective]) return 0.5;
- return 0;
+ const winner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,sc[0],sc[1]);
+ if(winner===null) return 0.5;
+ return winner===perspective?1:0;
 }
 function modernOpeningSwingScore(S,startPlayer){
  const C=cloneState(S);
@@ -517,7 +530,7 @@ function chooseMove(S,strategy,mcCfg){
 function simulateOne(startPlayer,strA,strB,mcCfg){const {ancient,modern}=splitDeckForAges(makeDeck());
  const S={age:"ancient",nextAgeFirst:1-startPlayer,current:startPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:true,feat:makeFeat()}],picksLeftThisTurn:1,events:{jokerDouble:[0,0],jokerDoubleByAge:{ancient:[0,0],modern:[0,0]}}};
  let guard=1000; while(!S.ended && guard-->0){const strat=S.current===0?strA:strB; const mv=chooseMove(S,strat,mcCfg); if(mv===null){S.picksLeftThisTurn=1; S.current=1-S.current; continue;} applyTake(S,mv,mcCfg);} const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
- const vpA=score.vp[0], vpB=score.vp[1]; const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA===vpB?"draw":(vpA>vpB?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Points draw":"Points");
+ const vpA=score.vp[0], vpB=score.vp[1]; const pointsWinner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,vpA,vpB); const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(pointsWinner===null?"draw":(pointsWinner===0?"a":"b")); const winBy=S.winBy || (winner==="draw"?"Points draw":"Points");
  return {vpA,vpB,margin:vpB-vpA,winner,winBy,score,events:S.events};}
 function renderRows(tbody,rows){tbody.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td>${r[2]!==undefined?`<td>${r[2]}</td>`:""}</tr>`).join("");}
 function renderHistogram(margins){const buckets=new Map(); for(let x=-20;x<=20;x+=4) buckets.set(`${x}..${x+3}`,0); buckets.set("<=-21",0); buckets.set(">=21",0); for(const m of margins){if(m<=-21)buckets.set("<=-21",buckets.get("<=-21")+1); else if(m>=21)buckets.set(">=21",buckets.get(">=21")+1); else {const b=Math.floor((m+20)/4),s=-20+b*4,key=`${s}..${s+3}`; buckets.set(key,buckets.get(key)+1);}} const total=Math.max(1,margins.length),maxN=Math.max(1,...buckets.values()); document.getElementById("marginHist").innerHTML=[...buckets.entries()].map(([k,v])=>`<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${Math.round(100*v/maxN)}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`).join("");}
