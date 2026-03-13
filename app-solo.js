@@ -463,6 +463,14 @@ function resolveRivalChoice(idx){
   updateFeat(ai.feat,slot.card);
   log(`AI takes ${label(slot.card)} (${G.rivalChoiceReason}).`);
   G.lastTaken={player:1,card:slot.card};
+
+  // In solo mode, rival picks are usually a consequence of the human move
+  // (the pick was already consumed). The exception is the Phase 2 opening
+  // when AI starts and this rival pick is the AI turn action itself.
+  if(G.players[G.current]?.isAI){
+    G.picksLeftThisTurn=Math.max(0,G.picksLeftThisTurn-1);
+  }
+
   G.awaitingRivalChoice=false;
   G.rivalChoiceIndices=[];
   G.rivalChoiceSuit=null;
