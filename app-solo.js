@@ -510,6 +510,22 @@ function startRivalSelection(playerCard){
       endTurnOrAge();
       return;
     }
+    const blackHighValue=highValueBlackOpenMoves(open);
+    if(blackHighValue.length===1){
+      G.awaitingRivalChoice=true;
+      G.rivalChoiceIndices=blackHighValue;
+      G.rivalChoiceReason="phase 2 opening pick: black 2-point card (forced priority)";
+      resolveRivalChoice(blackHighValue[0]);
+      return;
+    }
+    if(blackHighValue.length>1){
+      G.awaitingRivalChoice=true;
+      G.rivalChoiceIndices=blackHighValue;
+      G.rivalChoiceReason="phase 2 opening pick: choose a black 2-point card for AI";
+      log("Phase 2 opening AI pick: choose a black 2-point card (10/J/Q/K of ♠ or ♣).");
+      render();
+      return;
+    }
     G.awaitingRivalChoice=true;
     G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
     G.rivalChoiceReason="phase 2 opening pick: choose leftmost or rightmost unlocked card for AI";
