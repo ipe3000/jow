@@ -317,9 +317,21 @@ function maybeAdvanceAge(S){
  S.ended=true;
 }
 
-function simulateOne(_startPlayer,strA,mcCfg){
+function simulateOne(startPlayer,strA,mcCfg){
  const {ancient,modern}=splitDeckForAges(makeDeck());
- const S={age:"ancient",nextAgeFirst:1,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
+ const firstPlayer=startPlayer===1?1:0;
+ const S={age:"ancient",nextAgeFirst:1-firstPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:true,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
+
+ if(firstPlayer===1){
+  const openingRival=rivalOptionsForOpening(S);
+  if(openingRival.options.length){
+   const ridx=chooseRivalIdxForA(S,openingRival.options,"insta");
+   if(ridx!==null) applyTake(S,1,ridx);
+   S.events.rivalChoices+=openingRival.options.length>1?1:0;
+   S.events.rivalForced+=openingRival.options.length<=1?1:0;
+  }
+ }
+
  let guard=1200;
  while(!S.ended && guard-->0){
   maybeAdvanceAge(S);
