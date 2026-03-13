@@ -32,6 +32,7 @@ let G=null;
 let aiTimer=null;
 let renderScheduled=false;
 const SOLO_MODE=true;
+const SOLO_NON_HUMAN_PLAYER_INDEX=1;
 
 const AI_BASE_BUDGET_MS=5000;
 const HEURISTIC_WEIGHT_FOOD=1.25;
@@ -281,6 +282,11 @@ function suitSequences(cards,suit){
 function diamondSequences(cards){
   return suitSequences(cards,"D");
 }
+function soloAiRedSequenceBonus(cards){
+  const heartsVp=suitSequences(cards,"H").reduce((sum,seq)=>sum+seq.length,0);
+  const diamondsVp=suitSequences(cards,"D").reduce((sum,seq)=>sum+seq.length,0);
+  return heartsVp+diamondsVp;
+}
 function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){
   if(!a && !b) return rivalWinsTie?-1:0;
   if(!a) return -1;
@@ -334,7 +340,7 @@ function sequencePlacementByPlayer(playersCards,suit){
   return placements.map(p=>p.length?p.join(", "):"—");
 }
 function scoreGame(){
-  const p0=G.players[0].cards,p1=G.players[1].cards;
+  const p0=G.players[0].cards,p1=G.players[SOLO_NON_HUMAN_PLAYER_INDEX].cards;
   const s0=swords(p0),s1=swords(p1);
   const c0=foodPower(p0),c1=foodPower(p1);
   const military=[0,0];
@@ -359,8 +365,9 @@ function scoreGame(){
   const cultureAwards=cultureTopThree.placements;
 
   const calamity=[calamityPenalty(p0,true),calamityPenalty(p1,false)];
+  const soloAiBonus=soloAiRedSequenceBonus(p1);
   const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
-  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
+  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1]+soloAiBonus;
 
   return {
     vp:[vp0,vp1],
@@ -375,7 +382,8 @@ function scoreGame(){
       culture,
       cultureAwards,
       cultureSweepBonusOwner:cultureTopThree.sweepBonusOwner,
-      calamity
+      calamity,
+      soloAiBonus
     }
   };
 }
@@ -621,7 +629,8 @@ function showEndgameModal(sc,winner){
     {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
     {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
     {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]},
+    {label:"Solo bonus rosso (solo AI)",a:0,b:sc.detail.soloAiBonus}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
@@ -652,6 +661,7 @@ function showEndgameModal(sc,winner){
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
     <p style='color:var(--muted);margin-top:8px'>Bonus ♥: ${technologyText}${technologySweepText}</p>
     <p style='color:var(--muted);margin-top:8px'>Bonus ♦: ${cultureText}${cultureSweepText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Regola solo (solo giocatore non-umano, cioè AI/colonna destra): a fine partita ottiene <strong>1 VP per ogni carta rossa</strong> (♥ o ♦) che fa parte di una sequenza rossa di almeno 2 carte.<br>Esempi: ♥4-♥5-♥6 vale 3 VP; ♦Q-♦K-A♦ vale 3 VP; ♥7 singola vale 0 VP.</p>
     <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -1176,6 +1186,7 @@ function scoreFor(S,i){
   vp[1]+=cultureTopThree.vp[1];
   vp[0]+=calamityPenalty(a,true);
   vp[1]+=calamityPenalty(b,false);
+  vp[1]+=soloAiRedSequenceBonus(b);
   return vp[i];
 }
 
