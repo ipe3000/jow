@@ -383,7 +383,7 @@ function checkSupremacy(){
   return null;
 }
 
-function newGame(firstPlayer=null){
+function newGame(){
   const {ancient,modern}=splitDeckForAges(makeDeck());
   const first=0;
   G={
@@ -398,45 +398,12 @@ function newGame(firstPlayer=null){
     awaitingRivalChoice:false,
     rivalChoiceIndices:[],
     rivalChoiceSuit:null,
-    rivalChoiceReason:""
+    rivalChoiceReason:"",
+    phaseTwoOpeningRivalPickPending:false
   };
   G.tableau=buildTableau("ancient",G.decks.ancient);
   log(`New game. ${G.players[G.current].name} starts.`);
   render();
-}
-
-function promptChooseStarter({
-  title="New Game",
-  showConfirmText=true,
-  showCancel=true
-}={}){
-  return new Promise(resolve=>{
-    const d=document.getElementById("newGameDialog");
-    const confirmLine=showConfirmText?"<p>Are you sure you want to start a new game?</p>":"";
-    const cancelRow=showCancel?`<div class='optRow'>
-        <button id='newStartCancel'>Cancel</button>
-      </div>`:"";
-    d.innerHTML=`
-      <h3>${title}</h3>
-      ${confirmLine}
-      <p>Choose who starts:</p>
-      <div class='optRow'>
-        <button id='newStartHuman' class='primary'>You start</button>
-        <button id='newStartAi'>AI starts</button>
-      </div>
-      ${cancelRow}
-    `;
-    if(!d.open) d.showModal();
-    const close=(choice=null)=>{ if(d.open) d.close(); resolve(choice); };
-    d.querySelector("#newStartHuman").onclick=()=>close(0);
-    d.querySelector("#newStartAi").onclick=()=>close(1);
-    const cancelBtn=d.querySelector("#newStartCancel");
-    if(cancelBtn) cancelBtn.onclick=()=>close(null);
-    d.oncancel=e=>{
-      e.preventDefault();
-      if(showCancel) close(null);
-    };
-  });
 }
 
 function log(msg){
@@ -525,15 +492,26 @@ function startRivalSelection(playerCard){
     resolveRivalChoice(open[0]);
     return;
   }
+  G.awaitingRivalChoice=true;
+  if(G.phaseTwoOpeningRivalPickPending){
+    G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
+    G.rivalChoiceReason="phase 2 opening pick: choose leftmost or rightmost unlocked card for AI";
+    G.phaseTwoOpeningRivalPickPending=false;
+    if(G.rivalChoiceIndices.length===1){
+      resolveRivalChoice(G.rivalChoiceIndices[0]);
+      return;
+    }
+    log("Phase 2 opening AI pick: choose leftmost or rightmost unlocked card.");
+    render();
+    return;
+  }
   const sameSuit=open.filter(i=>G.tableau.slots[i].card.suit===playerCard.suit);
   if(sameSuit.length===1){
     G.rivalChoiceReason=`same suit ${SUIT_NAME[playerCard.suit]} (forced)`;
-    G.awaitingRivalChoice=true;
     G.rivalChoiceIndices=sameSuit.slice();
     resolveRivalChoice(sameSuit[0]);
     return;
   }
-  G.awaitingRivalChoice=true;
   G.rivalChoiceSuit=playerCard.suit;
   if(sameSuit.length>1){
     G.rivalChoiceIndices=sameSuit;
@@ -542,13 +520,7 @@ function startRivalSelection(playerCard){
     render();
     return;
   }
-  let left=open[0],right=open[0];
-  for(const i of open){
-    const sl=G.tableau.slots[i];
-    if(sl.gridX<G.tableau.slots[left].gridX) left=i;
-    if(sl.gridX>G.tableau.slots[right].gridX) right=i;
-  }
-  G.rivalChoiceIndices=left===right?[left]:[left,right];
+  G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
   G.rivalChoiceReason="choose leftmost or rightmost unlocked card for AI";
   if(G.rivalChoiceIndices.length===1){
     resolveRivalChoice(G.rivalChoiceIndices[0]);
@@ -660,6 +632,17 @@ function legalOpenMoves(tableau){
   }
   return moves;
 }
+function leftmostRightmostOpenMoves(open){
+  if(!open.length) return [];
+  let left=open[0],right=open[0];
+  for(const i of open){
+    const sl=G.tableau.slots[i];
+    if(sl.gridX<G.tableau.slots[left].gridX) left=i;
+    if(sl.gridX>G.tableau.slots[right].gridX) right=i;
+  }
+  return left===right?[left]:[left,right];
+}
+
 
 function ucbSelect(stats,total,c=0.9){
   let bestIdx=null,best=-Infinity;
@@ -1149,6 +1132,7 @@ async function endTurnOrAge(){
       G.pendingAIRemovals=[];
       G.current=start;
       G.picksLeftThisTurn=1;
+      G.phaseTwoOpeningRivalPickPending=true;
       log(`Phase One ends. Phase Two starts with ${G.players[G.current].name}.`);
       render(); return;
     }
@@ -1179,7 +1163,7 @@ function render(){
     sideTurn.textContent="Turn: -";
     sideTurn.classList.remove("aiTurn");
   }else if(G.awaitingRivalChoice){
-    sideTurn.textContent="Turn: Choose AI card";
+    sideTurn.textContent="Turn: AI (choose card)";
     sideTurn.classList.add("aiTurn");
   }else{
     sideTurn.textContent="Turn: You";
@@ -1276,23 +1260,11 @@ if(document.fonts?.ready){
   document.fonts.ready.then(()=>scheduleRender());
 }
 
-document.getElementById("newGameBtn").onclick=async()=>{
-  const first=await promptChooseStarter();
-  if(first===null) return;
-  newGame(first);
+document.getElementById("newGameBtn").onclick=()=>{
+  newGame();
 };
 document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
 
-window.addEventListener("DOMContentLoaded",async()=>{
-  // Prepara subito tutta la UI (tableau/collector/log) dietro al popup iniziale.
-  // Usiamo temporaneamente P1 come starter, poi riallineiamo allo starter scelto.
-  newGame(0);
-
-  const first=await promptChooseStarter({
-    title:"New game",
-    showConfirmText:false,
-    showCancel:false
-  });
-
-  if(first===1) newGame(1);
+window.addEventListener("DOMContentLoaded",()=>{
+  newGame();
 });
