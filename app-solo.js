@@ -282,11 +282,6 @@ function suitSequences(cards,suit){
 function diamondSequences(cards){
   return suitSequences(cards,"D");
 }
-function soloAiRedSequenceBonus(cards){
-  const heartsVp=suitSequences(cards,"H").reduce((sum,seq)=>sum+seq.length,0);
-  const diamondsVp=suitSequences(cards,"D").reduce((sum,seq)=>sum+seq.length,0);
-  return heartsVp+diamondsVp;
-}
 function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){
   if(!a && !b) return rivalWinsTie?-1:0;
   if(!a) return -1;
@@ -365,9 +360,8 @@ function scoreGame(){
   const cultureAwards=cultureTopThree.placements;
 
   const calamity=[calamityPenalty(p0,true),calamityPenalty(p1,false)];
-  const soloAiBonus=soloAiRedSequenceBonus(p1);
   const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
-  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1]+soloAiBonus;
+  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
 
   return {
     vp:[vp0,vp1],
@@ -382,8 +376,7 @@ function scoreGame(){
       culture,
       cultureAwards,
       cultureSweepBonusOwner:cultureTopThree.sweepBonusOwner,
-      calamity,
-      soloAiBonus
+      calamity
     }
   };
 }
@@ -391,7 +384,6 @@ function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
   const swordDiff=f0.sw-f1.sw;
   const foodDiff=f0.cw-f1.cw;
-  if(swordDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♠ You immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
   if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
   if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (diff >=${SOLO_SUPREMACY_THRESHOLD_AI})`};
@@ -629,8 +621,7 @@ function showEndgameModal(sc,winner){
     {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
     {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
     {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]},
-    {label:"Solo bonus rosso (solo AI)",a:0,b:sc.detail.soloAiBonus}
+    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
   ];
   const cultureText=sc.detail.cultureAwards.length
     ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
@@ -661,7 +652,6 @@ function showEndgameModal(sc,winner){
     <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
     <p style='color:var(--muted);margin-top:8px'>Bonus ♥: ${technologyText}${technologySweepText}</p>
     <p style='color:var(--muted);margin-top:8px'>Bonus ♦: ${cultureText}${cultureSweepText}</p>
-    <p style='color:var(--muted);margin-top:8px'>Regola solo (solo giocatore non-umano, cioè AI/colonna destra): a fine partita ottiene <strong>1 VP per ogni carta rossa</strong> (♥ o ♦) che fa parte di una sequenza rossa di almeno 2 carte.<br>Esempi: ♥4-♥5-♥6 vale 3 VP; ♦Q-♦K-A♦ vale 3 VP; ♥7 singola vale 0 VP.</p>
     <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -776,7 +766,6 @@ function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
   const swordDiff=f0.sw-f1.sw;
   const foodDiff=f0.cw-f1.cw;
-  if(swordDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
   if(foodDiff>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
   if(-swordDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   if(-foodDiff>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
@@ -1186,7 +1175,6 @@ function scoreFor(S,i){
   vp[1]+=cultureTopThree.vp[1];
   vp[0]+=calamityPenalty(a,true);
   vp[1]+=calamityPenalty(b,false);
-  vp[1]+=soloAiRedSequenceBonus(b);
   return vp[i];
 }
 
