@@ -1,0 +1,1298 @@
+const SUITS=["S","D","H","C"];
+const DIAMOND_VP_AWARDS=[6,3,1];
+const TOP_THREE_SWEEP_BONUS=3;
+const MILITARY_VP=2;
+const CALAMITY_KING_THRESHOLD=2;
+const CALAMITY_VP_PENALTY=-2;
+const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
+const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
+const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
+const MASK13=(1<<13)-1;
+const TABLEAU_MODEL={
+  ancient:[
+    {faceDown:false,xs:[2,3,4]},
+    {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
+    {faceDown:false,xs:[1,2,3,4,5]},
+    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},
+    {faceDown:false,xs:[0,1,2,3,4,5,6]}
+  ],
+  modern:[
+    {faceDown:true,xs:[2.5,3.5]},
+    {faceDown:false,xs:[2,3,4]},
+    {faceDown:true,xs:[1.5,2.5,3.5,4.5]},
+    {faceDown:false,xs:[1,2,3,4,5]},
+    {faceDown:true,xs:[0.5,1.5,2.5,3.5,4.5,5.5]},
+    {faceDown:false,xs:[0,1,2,3,4,5,6]}
+  ]
+};
+let G=null;
+let aiTimer=null;
+let renderScheduled=false;
+const SOLO_MODE=true;
+
+const AI_BASE_BUDGET_MS=5000;
+const HEURISTIC_WEIGHT_FOOD=1.25;
+const HEURISTIC_WEIGHT_DIAMOND=0.9;
+const HEURISTIC_WEIGHT_TECH=0.9;
+
+function makeFeat(){
+  return {sw:0,cw:0,hMask:0,hAdj:0,dMask:0,dAdj:0};
+}
+function cloneFeat(feat){
+  return {...feat};
+}
+
+function isSlotGone(slot){
+  return !!(slot.removed || slot.pendingAIPick);
+}
+
+function countRemainingCards(tableau){
+  let n=0;
+  for(const sl of tableau.slots) if(!isSlotGone(sl)) n++;
+  return n;
+}
+function getAiThinkingBudgetMs(state){
+  const left=countRemainingCards(state.tableau);
+  if(left<=6) return 6500;
+  if(left<=10) return 5800;
+  return AI_BASE_BUDGET_MS;
+}
+
+function scheduleRender(){
+  if(renderScheduled) return;
+  renderScheduled=true;
+  requestAnimationFrame(()=>{
+    renderScheduled=false;
+    render();
+  });
+}
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function makeDeck(){
+  const cards=[]; let id=0;
+  for(const s of SUITS){for(const r of RANKS){cards.push({id:id++,suit:s,rank:r});}}
+  return cards;
+}
+function getAgeSlotCount(age){
+  return TABLEAU_MODEL[age].reduce((total,row)=>total+row.xs.length,0);
+}
+function splitDeckForAges(deck){
+  const shuffled=shuffle(deck.slice());
+  const ancientCount=getAgeSlotCount("ancient");
+  const modernCount=getAgeSlotCount("modern");
+  const ancient=shuffled.slice(0,ancientCount);
+  const modern=shuffled.slice(ancientCount,ancientCount+modernCount);
+  return {ancient:shuffle(ancient),modern:shuffle(modern)};
+}
+function makeUnknownModernDeck(){
+  return shuffle(makeDeck()).slice(0,getAgeSlotCount("modern"));
+}
+function label(c){return `${c.rank}${SUIT_ICON[c.suit]}`;}
+function cardClass(c){return `suit${c.suit}`;}
+function sortCardsByRank(cards){
+  return cards.slice().sort((a,b)=>RANK_VAL[a.rank]-RANK_VAL[b.rank]);
+}
+function groupStraightRuns(cards){
+  const sorted=sortCardsByRank(cards);
+  if(!sorted.length) return [];
+  const groups=[[sorted[0]]];
+  for(let i=1;i<sorted.length;i++){
+    const prev=groups[groups.length-1][groups[groups.length-1].length-1];
+    const cur=sorted[i];
+    if(RANK_VAL[cur.rank]===RANK_VAL[prev.rank]+1) groups[groups.length-1].push(cur);
+    else groups.push([cur]);
+  }
+  return groups;
+}
+function suitMaximalGroups(cards,suit){
+  const cardByRank=new Map(cards.filter(c=>c.suit===suit).map(c=>[RANK_VAL[c.rank],c]));
+  const owned=new Set(cardByRank.keys());
+  if(owned.size<2) return [];
+  const present=i=>owned.has(i===0?13:i===14?1:i);
+  const groups=[];
+  for(let i=1;i<=13;i++){
+    if(!owned.has(i)) continue;
+    if(present(i-1)) continue;
+    const ranks=[i];
+    let cur=i;
+    while(present(cur+1)){
+      cur=cur===13?1:cur+1;
+      if(cur===i) break;
+      ranks.push(cur);
+    }
+    if(ranks.length>=2) groups.push(ranks.map(r=>cardByRank.get(r)).filter(Boolean));
+  }
+  return groups;
+}
+function groupedSuitTokens(suit,cards){
+  const sorted=sortCardsByRank(cards);
+  if(suit==="H" || suit==="D"){
+    const runs=suitMaximalGroups(sorted,suit);
+    const used=new Set(runs.flat().map(c=>c.id));
+    const singles=sorted.filter(c=>!used.has(c.id)).map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
+    const groups=runs.map(g=>({key:RANK_VAL[g[0].rank],cards:g}));
+    return [...singles,...groups].sort((a,b)=>a.key-b.key);
+  }
+  return sorted.map(c=>({key:RANK_VAL[c.rank],cards:[c]}));
+}
+
+function layout(model){
+  const w=64,h=90;
+  const overlap=(110-42)*0.6; // riduce del 40% la sovrapposizione verticale precedente
+  const v=h-overlap;
+  const hStep=68;
+  const allX=model.flatMap(r=>r.xs);
+  const minX=Math.min(...allX), maxX=Math.max(...allX);
+  const width=w+(maxX-minX)*hStep;
+  const pos=[];
+  let idx=0;
+  for(let row=0;row<model.length;row++){
+    for(let col=0;col<model[row].xs.length;col++){
+      const gx=model[row].xs[col];
+      pos[idx++]={row,col,gridX:gx,x:(gx-minX)*hStep,y:row*v};
+    }
+  }
+  return {w,h,hStep,minX,pos,width,height:(model.length-1)*v+h};
+}
+
+function buildRows(model){
+  let idx=0;
+  return model.map((cfg,row)=>cfg.xs.map((gridX,col)=>({idx:idx++,row,col,gridX})));
+}
+function buildCovering(rows){
+  const total=rows.reduce((a,r)=>a+r.length,0);
+  const coveredBy=Array.from({length:total},()=>[]);
+  for(let r=0;r<rows.length-1;r++){
+    const upper=rows[r], lower=rows[r+1];
+    const lowerByX=new Map(lower.map(s=>[s.gridX,s.idx]));
+    for(const slot of upper){
+      const c1=lowerByX.get(slot.gridX-0.5);
+      const c2=lowerByX.get(slot.gridX+0.5);
+      if(c1!==undefined) coveredBy[slot.idx].push(c1);
+      if(c2!==undefined) coveredBy[slot.idx].push(c2);
+    }
+  }
+  return coveredBy;
+}
+function buildCoveredBy(covering){
+  const coveredBy=Array.from({length:covering.length},()=>[]);
+  for(let i=0;i<covering.length;i++) for(const c of covering[i]) coveredBy[c].push(i);
+  return coveredBy;
+}
+function buildTableau(age,deck){
+  const model=TABLEAU_MODEL[age], geom=layout(model), slots=[];
+  const rows=buildRows(model);
+  const covering=buildCovering(rows);
+  for(const p of geom.pos){
+    const card=deck.pop();
+    const faceDown=model[p.row].faceDown;
+    slots.push({card,removed:false,pendingAIPick:false,faceDown,row:p.row,col:p.col,gridX:p.gridX,x:p.x,y:p.y});
+  }
+  return {slots,geom,coveredBy:covering,coveredByRev:buildCoveredBy(covering)};
+}
+function accessibility(tableau){
+  const {slots,coveredBy}=tableau;
+  return slots.map((s,i)=>{
+    if(isSlotGone(s)) return false;
+    return !(coveredBy[i]||[]).some(cIdx=>!isSlotGone(slots[cIdx]));
+  });
+}
+function flipNew(slots,acc){
+  let f=0;
+  for(let i=0;i<slots.length;i++) if(!isSlotGone(slots[i]) && slots[i].faceDown && acc[i]){slots[i].faceDown=false; f++;}
+  return f;
+}
+
+function commitPendingAIPicks(){
+  if(!G?.pendingAIRemovals?.length) return;
+  for(const idx of G.pendingAIRemovals){
+    const slot=G.tableau.slots[idx];
+    if(!slot || !slot.pendingAIPick) continue;
+    slot.pendingAIPick=false;
+    slot.removed=true;
+  }
+  G.pendingAIRemovals=[];
+}
+function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
+function popcount13(x){ x>>>=0; let c=0; while(x){ x&=x-1; c++; } return c; }
+function diamondAdjFromMask(mask){
+  mask&=MASK13;
+  const rot=((mask<<1)&MASK13) | (mask>>>12);
+  return popcount13(mask&rot);
+}
+function swordValue(card){
+  const v=RANK_VAL[card.rank];
+  return (v<=9) ? 1 : 2;
+}
+function foodPower(cards){
+  return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);
+}
+function calamityPenalty(cards){
+  const kings=cards.filter(c=>c.rank==="K").length;
+  return kings>=CALAMITY_KING_THRESHOLD?CALAMITY_VP_PENALTY:0;
+}
+function updateFeat(feat,card){
+  if(card.suit==="S") feat.sw+=swordValue(card);
+  if(card.suit==="C") feat.cw+=swordValue(card);
+  if(card.suit==="H"){
+    feat.hMask|=bitOfRank(card.rank);
+    feat.hAdj=diamondAdjFromMask(feat.hMask);
+  }
+  if(card.suit==="D"){
+    feat.dMask|=bitOfRank(card.rank);
+    feat.dAdj=diamondAdjFromMask(feat.dMask);
+  }
+}
+function swords(cards){
+  return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);
+}
+function suitLeadVP(my,opp){
+  if(my>opp) return MILITARY_VP;
+  return 0;
+}
+function breakthroughCount(cards){
+  return suitSequences(cards,"H").length;
+}
+
+function suitSequences(cards,suit){
+  const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank]));
+  if(owned.size<2) return [];
+  const present=i=>owned.has(i===0?13:i===14?1:i);
+  if(owned.size===13) return [{length:13,high:13}];
+  const seq=[];
+  for(let i=1;i<=13;i++){
+    if(!owned.has(i)) continue;
+    if(present(i-1)) continue;
+    let len=1,cur=i;
+    while(present(cur+1)){len++;cur=cur===13?1:cur+1; if(cur===i) break;}
+    if(len>=2){
+      let high=i;
+      for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;}
+      seq.push({length:len,high});
+    }
+  }
+  return seq;
+}
+
+function diamondSequences(cards){
+  return suitSequences(cards,"D");
+}
+function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){
+  if(!a && !b) return rivalWinsTie?-1:0;
+  if(!a) return -1;
+  if(!b) return 1;
+  if(a.length!==b.length) return a.length>b.length?1:-1;
+  if(!ignoreHigh && a.high!==b.high) return a.high>b.high?1:-1;
+  return rivalWinsTie?-1:0;
+}
+function bestRedSuitSequence(cards){
+  const best=suit=>{
+    const seq=suitSequences(cards,suit);
+    if(!seq.length) return null;
+    return seq.slice().sort((a,b)=>b.length-a.length)[0];
+  };
+  const bestHeart=best("H");
+  const bestDiamond=best("D");
+  const cmp=compareSequences(bestHeart,bestDiamond,{ignoreHigh:true});
+  return cmp>=0?bestHeart:bestDiamond;
+}
+function winnerOnVpWithRedTieBreak(cards0,cards1,vp0,vp1){
+  if(vp0!==vp1) return vp0>vp1?0:1;
+  const red0=bestRedSuitSequence(cards0);
+  const red1=bestRedSuitSequence(cards1);
+  const cmp=compareSequences(red0,red1,{ignoreHigh:true,rivalWinsTie:true});
+  return cmp>0?0:1;
+}
+function awardTopThreePlacements(seqs,ownerKey="owner"){
+  const vp=[0,0];
+  const placements=[];
+  for(let i=0;i<Math.min(DIAMOND_VP_AWARDS.length,seqs.length);i++){
+    const award=DIAMOND_VP_AWARDS[i];
+    const owner=seqs[i][ownerKey];
+    vp[owner]+=award;
+    placements.push({owner,vp:award,length:seqs[i].length});
+  }
+  let sweepBonusOwner=null;
+  if(placements.length===3 && placements.every(p=>p.owner===placements[0].owner)){
+    sweepBonusOwner=placements[0].owner;
+    vp[sweepBonusOwner]+=TOP_THREE_SWEEP_BONUS;
+  }
+  return {vp,placements,sweepBonusOwner};
+}
+function sequencePlacementByPlayer(playersCards,suit){
+  const placements=[[],[]];
+  const labels=["1st","2nd","3rd"];
+  const ranked=[
+    ...suitSequences(playersCards[0],suit).map(s=>({...s,owner:0})),
+    ...suitSequences(playersCards[1],suit).map(s=>({...s,owner:1}))
+  ].sort((a,b)=>b.length-a.length || b.high-a.high);
+  for(let i=0;i<Math.min(3,ranked.length);i++) placements[ranked[i].owner].push(labels[i]);
+  return placements.map(p=>p.length?p.join(", "):"—");
+}
+function scoreGame(){
+  const p0=G.players[0].cards,p1=G.players[1].cards;
+  const s0=swords(p0),s1=swords(p1);
+  const c0=foodPower(p0),c1=foodPower(p1);
+  const military=[0,0];
+  if(s0>s1) military[0]=MILITARY_VP; else if(s1>s0) military[1]=MILITARY_VP;
+  const food=[0,0];
+  if(c0>c1) food[0]=MILITARY_VP; else if(c1>c0) food[1]=MILITARY_VP;
+
+  const technology=[0,0];
+  const techSeqs=[...suitSequences(p0,"H").map(s=>({...s,owner:0})),...suitSequences(p1,"H").map(s=>({...s,owner:1}))]
+    .sort((a,b)=>b.length-a.length || b.high-a.high);
+  const techTopThree=awardTopThreePlacements(techSeqs,"owner");
+  technology[0]+=techTopThree.vp[0];
+  technology[1]+=techTopThree.vp[1];
+  const techAwards=techTopThree.placements;
+
+  const culture=[0,0];
+  const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
+    .sort((a,b)=>b.length-a.length || b.high-a.high);
+  const cultureTopThree=awardTopThreePlacements(seqs,"owner");
+  culture[0]+=cultureTopThree.vp[0];
+  culture[1]+=cultureTopThree.vp[1];
+  const cultureAwards=cultureTopThree.placements;
+
+  const calamity=[calamityPenalty(p0),calamityPenalty(p1)];
+  const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
+  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
+
+  return {
+    vp:[vp0,vp1],
+    detail:{
+      swords:[s0,s1],
+      foods:[c0,c1],
+      military,
+      food,
+      tech:technology,
+      techAwards,
+      techSweepBonusOwner:techTopThree.sweepBonusOwner,
+      culture,
+      cultureAwards,
+      cultureSweepBonusOwner:cultureTopThree.sweepBonusOwner,
+      calamity
+    }
+  };
+}
+function checkSupremacy(){
+  const f0=G.players[0].feat, f1=G.players[1].feat;
+  if(f1.sw - f0.sw >= 5) return {winner:1,reason:"♠ AI immediate victory (>=5 lead)"};
+  if(f1.cw - f0.cw >= 5) return {winner:1,reason:"♣ AI immediate victory (>=5 lead)"};
+  return null;
+}
+
+function newGame(firstPlayer=null){
+  const {ancient,modern}=splitDeckForAges(makeDeck());
+  const first=0;
+  G={
+    age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
+    decks:{ancient,modern}, tableau:null,
+    players:[
+      {name:"You",cards:[],joker:true,isAI:false,feat:makeFeat()},
+      {name:"AI",cards:[],joker:true,isAI:true,feat:makeFeat()}
+    ],
+    lastTaken:null, picksLeftThisTurn:1,
+    pendingAIRemovals:[],
+    awaitingRivalChoice:false,
+    rivalChoiceIndices:[],
+    rivalChoiceSuit:null,
+    rivalChoiceReason:""
+  };
+  G.tableau=buildTableau("ancient",G.decks.ancient);
+  log(`New game. ${G.players[G.current].name} starts.`);
+  render();
+}
+
+function promptChooseStarter({
+  title="New Game",
+  showConfirmText=true,
+  showCancel=true
+}={}){
+  return new Promise(resolve=>{
+    const d=document.getElementById("newGameDialog");
+    const confirmLine=showConfirmText?"<p>Are you sure you want to start a new game?</p>":"";
+    const cancelRow=showCancel?`<div class='optRow'>
+        <button id='newStartCancel'>Cancel</button>
+      </div>`:"";
+    d.innerHTML=`
+      <h3>${title}</h3>
+      ${confirmLine}
+      <p>Choose who starts:</p>
+      <div class='optRow'>
+        <button id='newStartHuman' class='primary'>You start</button>
+        <button id='newStartAi'>AI starts</button>
+      </div>
+      ${cancelRow}
+    `;
+    if(!d.open) d.showModal();
+    const close=(choice=null)=>{ if(d.open) d.close(); resolve(choice); };
+    d.querySelector("#newStartHuman").onclick=()=>close(0);
+    d.querySelector("#newStartAi").onclick=()=>close(1);
+    const cancelBtn=d.querySelector("#newStartCancel");
+    if(cancelBtn) cancelBtn.onclick=()=>close(null);
+    d.oncancel=e=>{
+      e.preventDefault();
+      if(showCancel) close(null);
+    };
+  });
+}
+
+function log(msg){
+  const p=document.createElement("p"); p.className="line"; p.textContent=msg;
+  const l=document.getElementById("log"); l.prepend(p);
+}
+
+function takeCard(idx){
+  if(G.ended) return;
+  const slots=G.tableau.slots, accBefore=accessibility(G.tableau);
+  const s=slots[idx];
+  if(!accBefore[idx]||s.faceDown||isSlotGone(s)) return;
+
+  const pl=G.players[G.current];
+  if(!pl.isAI && G.pendingAIRemovals.length) commitPendingAIPicks();
+
+  if(pl.isAI){
+    s.pendingAIPick=true;
+    if(!G.pendingAIRemovals.includes(idx)) G.pendingAIRemovals.push(idx);
+  }else{
+    s.removed=true;
+  }
+
+  pl.cards.push(s.card);
+  updateFeat(pl.feat,s.card);
+  G.lastTaken={player:G.current,card:s.card};
+
+  G.picksLeftThisTurn=Math.max(0,G.picksLeftThisTurn-1);
+  const accAfter=accessibility(G.tableau);
+  const f=flipNew(slots,accAfter);
+  log(`${pl.name} takes ${label(s.card)}.${f?` Reveals ${f} cards.`:""}`);
+
+  const sup=checkSupremacy();
+  if(sup){
+    G.ended=true;
+    log(`🏆 ${G.players[sup.winner].name} wins by ${sup.reason}.`);
+    showSupremacyModal(sup);
+    render();
+    return;
+  }
+
+  if(!pl.isAI && G.picksLeftThisTurn<=0){
+    startRivalSelection(s.card);
+    return;
+  }
+  endTurnOrAge();
+}
+
+function resolveRivalChoice(idx){
+  if(!G?.awaitingRivalChoice) return;
+  if(!G.rivalChoiceIndices.includes(idx)) return;
+  const slot=G.tableau.slots[idx];
+  if(!slot || slot.faceDown || isSlotGone(slot)) return;
+  slot.removed=true;
+  const ai=G.players[1];
+  ai.cards.push(slot.card);
+  updateFeat(ai.feat,slot.card);
+  log(`AI takes ${label(slot.card)} (${G.rivalChoiceReason}).`);
+  G.lastTaken={player:1,card:slot.card};
+  G.awaitingRivalChoice=false;
+  G.rivalChoiceIndices=[];
+  G.rivalChoiceSuit=null;
+  G.rivalChoiceReason="";
+  const accAfter=accessibility(G.tableau);
+  const f=flipNew(G.tableau.slots,accAfter);
+  if(f) log(`Reveals ${f} cards.`);
+  const sup=checkSupremacy();
+  if(sup){
+    G.ended=true;
+    log(`🏆 ${G.players[sup.winner].name} wins by ${sup.reason}.`);
+    showSupremacyModal(sup);
+    render();
+    return;
+  }
+  endTurnOrAge();
+}
+
+function startRivalSelection(playerCard){
+  const open=legalOpenMoves(G.tableau);
+  if(open.length===0){
+    log("AI has no legal card to take.");
+    endTurnOrAge();
+    return;
+  }
+  if(open.length===1){
+    resolveRivalChoice(open[0]);
+    return;
+  }
+  const sameSuit=open.filter(i=>G.tableau.slots[i].card.suit===playerCard.suit);
+  if(sameSuit.length===1){
+    G.rivalChoiceReason=`same suit ${SUIT_NAME[playerCard.suit]} (forced)`;
+    G.awaitingRivalChoice=true;
+    G.rivalChoiceIndices=sameSuit.slice();
+    resolveRivalChoice(sameSuit[0]);
+    return;
+  }
+  G.awaitingRivalChoice=true;
+  G.rivalChoiceSuit=playerCard.suit;
+  if(sameSuit.length>1){
+    G.rivalChoiceIndices=sameSuit;
+    G.rivalChoiceReason=`choose a ${SUIT_NAME[playerCard.suit]} card for AI`;
+    log(`Choose AI card: it must be ${SUIT_NAME[playerCard.suit]} (same suit as your pick).`);
+    render();
+    return;
+  }
+  let left=open[0],right=open[0];
+  for(const i of open){
+    const sl=G.tableau.slots[i];
+    if(sl.gridX<G.tableau.slots[left].gridX) left=i;
+    if(sl.gridX>G.tableau.slots[right].gridX) right=i;
+  }
+  G.rivalChoiceIndices=left===right?[left]:[left,right];
+  G.rivalChoiceReason="choose leftmost or rightmost unlocked card for AI";
+  if(G.rivalChoiceIndices.length===1){
+    resolveRivalChoice(G.rivalChoiceIndices[0]);
+    return;
+  }
+  log("No same-suit unlocked card: choose leftmost or rightmost unlocked card for AI.");
+  render();
+}
+
+function onHumanCardClick(idx){
+  if(!G || G.ended) return;
+  if(G.awaitingRivalChoice){
+    resolveRivalChoice(idx);
+    return;
+  }
+  if(G.players[G.current].isAI) return;
+  takeCard(idx);
+}
+
+function canUseJokerDouble(player=G.current){
+  return !G.ended && G.current===player && G.players[player].joker && G.picksLeftThisTurn===1;
+}
+function useJokerDouble(player=G.current){
+  if(!canUseJokerDouble(player)) return false;
+  G.players[player].joker=false;
+  G.picksLeftThisTurn=2;
+  log(`${G.players[player].name} builds Wonder (Extra Turn): 2 picks this turn.`);
+  return true;
+}
+
+function showEndgameModal(sc,winner){
+  const d=document.getElementById("modal");
+  d.classList.remove("modernSwapModal");
+  const p0=G.players[0].name, p1=G.players[1].name;
+  const rows=[
+    {label:"♠",a:sc.detail.military[0],b:sc.detail.military[1]},
+    {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
+    {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
+    {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
+    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
+  ];
+  const cultureText=sc.detail.cultureAwards.length
+    ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
+    : "No ♦ bonus assigned.";
+  const technologyText=sc.detail.techAwards.length
+    ? sc.detail.techAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
+    : "No ♥ bonus assigned.";
+  const technologySweepText=sc.detail.techSweepBonusOwner===null
+    ? ""
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.techSweepBonusOwner].name} (1st, 2nd, 3rd in ♥)`;
+  const cultureSweepText=sc.detail.cultureSweepBonusOwner===null
+    ? ""
+    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.cultureSweepBonusOwner].name} (1st, 2nd, 3rd in ♦)`;
+  d.innerHTML=`
+    <h3>Game Over</h3>
+    <p>Victory points summary (Solo rules):</p>
+    <table class='endSummary'>
+      <thead>
+        <tr><th></th><th>You</th><th>AI</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`<tr><td>${r.label}</td><td><strong>${r.a}</strong></td><td><strong>${r.b}</strong></td></tr>`).join("")}
+      </tbody>
+      <tfoot>
+        <tr class='tot'><td>Total VP</td><td><strong>${sc.vp[0]}</strong></td><td><strong>${sc.vp[1]}</strong></td></tr>
+      </tfoot>
+    </table>
+    <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus ♥: ${technologyText}${technologySweepText}</p>
+    <p style='color:var(--muted);margin-top:8px'>Bonus ♦: ${cultureText}${cultureSweepText}</p>
+    <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
+    <div class='optRow'><button id='closeEnd'>Close</button></div>
+  `;
+  d.querySelector("#closeEnd").onclick=()=>d.close();
+  d.showModal();
+}
+
+function showSupremacyModal({winner,reason}){
+  const d=document.getElementById("modal");
+  d.classList.remove("modernSwapModal");
+  d.innerHTML=`
+    <h3>Game Over</h3>
+    <p><strong>${G.players[winner].name}</strong> wins by supremacy.</p>
+    <p style='color:var(--muted);margin-top:8px'>Reason: ${reason}</p>
+    <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
+    <div class='optRow'><button id='closeSup'>Close</button></div>
+  `;
+  d.querySelector("#closeSup").onclick=()=>d.close();
+  d.showModal();
+}
+
+function maybeModernSwap(nextFirst){
+  return Promise.resolve(nextFirst);
+}
+
+function aiSelectMove(){
+  const decision=chooseActionWithOptionalJoker();
+  if(!decision) return null;
+  if(decision.useJoker) useJokerDouble(1);
+  return decision.firstIdx;
+}
+
+function legalOpenMoves(tableau){
+  const acc=accessibility(tableau);
+  const moves=[];
+  for(let i=0;i<tableau.slots.length;i++){
+    const sl=tableau.slots[i];
+    if(acc[i] && !isSlotGone(sl) && !sl.faceDown) moves.push(i);
+  }
+  return moves;
+}
+
+function ucbSelect(stats,total,c=0.9){
+  let bestIdx=null,best=-Infinity;
+  for(const [idx,st] of stats.entries()){
+    if(st.n===0) return idx;
+    const mean=st.w/st.n;
+    const ucb=mean+c*Math.sqrt(Math.log(total)/st.n);
+    if(ucb>best){best=ucb;bestIdx=idx;}
+  }
+  return bestIdx;
+}
+
+function cloneGameState(){
+  const simTableau={
+    slots:G.tableau.slots.map(s=>({
+      ...s,
+      removed:!!(s.removed||s.pendingAIPick),
+      pendingAIPick:false
+    })),
+    coveredBy:G.tableau.coveredBy,
+    coveredByRev:G.tableau.coveredByRev
+  };
+  hideFaceDownInfoForSim(simTableau);
+  return {
+    age:G.age,
+    current:G.current,
+    ended:G.ended,
+    nextAgeFirst:G.nextAgeFirst,
+    picksLeftThisTurn:G.picksLeftThisTurn,
+    players:G.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
+    tableau:simTableau,
+    decks:{ancient:G.decks.ancient.slice(),modern:G.decks.modern.slice()}
+  };
+}
+function shuffleInPlace(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=(Math.random()*(i+1))|0;
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+function hideFaceDownInfoForSim(tableau){
+  const hiddenPool=[];
+  for(const slot of tableau.slots){
+    if(slot.removed || !slot.faceDown) continue;
+    if(slot.card) hiddenPool.push(slot.card);
+    slot.card=null;
+  }
+  tableau.hiddenPool=shuffleInPlace(hiddenPool);
+}
+function revealHiddenForSim(tableau){
+  if(!tableau.hiddenPool || !tableau.hiddenPool.length) return null;
+  return tableau.hiddenPool.pop();
+}
+function accessibilitySim(T){
+  const {slots,coveredBy}=T;
+  return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));
+}
+function checkSupremacySim(S){
+  const f0=S.players[0].feat, f1=S.players[1].feat;
+  if(f1.sw - f0.sw >= 5) return 1;
+  if(f1.cw - f0.cw >= 5) return 1;
+  return null;
+}
+function flipNewSim(tableau,acc){
+  const slots=tableau.slots;
+  for(let i=0;i<slots.length;i++){
+    if(slots[i].removed || !slots[i].faceDown || !acc[i]) continue;
+    slots[i].faceDown=false;
+    if(!slots[i].card) slots[i].card=revealHiddenForSim(tableau);
+  }
+}
+function staticTakeValue(S,player,card){
+  const f=S.players[player].feat;
+
+  const dSw=(card.suit==="S") ? swordValue(card) : 0;
+  const dFood=(card.suit==="C") ? swordValue(card) : 0;
+
+  let dTech=0;
+  if(card.suit==="H"){
+    const nm=(f.hMask|bitOfRank(card.rank))&MASK13;
+    dTech=diamondAdjFromMask(nm)-f.hAdj;
+  }
+
+  let dDia=0;
+  if(card.suit==="D"){
+    const nm=(f.dMask|bitOfRank(card.rank))&MASK13;
+    dDia=diamondAdjFromMask(nm)-f.dAdj;
+  }
+
+  return dSw*1.25 + dFood*HEURISTIC_WEIGHT_FOOD + dTech*HEURISTIC_WEIGHT_TECH + dDia*HEURISTIC_WEIGHT_DIAMOND;
+}
+function cheapEvalTake(S,player,idx){
+  const slot=S.tableau.slots[idx];
+  if(!slot || slot.removed || slot.faceDown) return -Infinity;
+  const card=slot.card;
+  if(!card) return -Infinity;
+  const me=S.players[player].feat;
+  const opp=S.players[1-player].feat;
+
+  const dSw=(card.suit==="S") ? swordValue(card) : 0;
+  const dFood=(card.suit==="C") ? swordValue(card) : 0;
+
+  let dTech=0;
+  if(card.suit==="H"){
+    const nm=(me.hMask|bitOfRank(card.rank))&MASK13;
+    dTech=diamondAdjFromMask(nm)-me.hAdj;
+  }
+
+  let dDia=0;
+  if(card.suit==="D"){
+    const nm=(me.dMask|bitOfRank(card.rank))&MASK13;
+    dDia=diamondAdjFromMask(nm)-me.dAdj;
+  }
+
+  const deny=(card.suit==="S" ? 0.24 : 0) + (card.suit==="C" ? 0.24 : 0) + (card.suit==="H" ? 0.14 : 0) + (card.suit==="D" ? 0.14 : 0);
+  const pressure=Math.max(0,opp.sw-me.sw-5)*0.05 + Math.max(0,opp.cw-me.cw-5)*0.05;
+
+  const baseScore=dSw*1.25 + dFood*HEURISTIC_WEIGHT_FOOD + dTech*HEURISTIC_WEIGHT_TECH + dDia*HEURISTIC_WEIGHT_DIAMOND + deny + pressure;
+
+  let revealBonus=0;
+  const rev=S.tableau.coveredByRev?.[idx] || [];
+  for(const upperIdx of rev){
+    const upper=S.tableau.slots[upperIdx];
+    if(!upper || upper.removed) continue;
+
+    const blockers=S.tableau.coveredBy[upperIdx] || [];
+    const becomesAccessible=blockers.every(b=>b===idx || S.tableau.slots[b].removed);
+    if(!becomesAccessible) continue;
+
+    const w=upper.faceDown ? 0.35 : 0.18;
+    if(upper.card) revealBonus += w * staticTakeValue(S,player,upper.card);
+  }
+
+  return baseScore + revealBonus;
+}
+function choosePlayoutMove(S,eps=0.12){
+  const moves=[];
+  const acc=accessibilitySim(S.tableau);
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
+  }
+  if(!moves.length) return null;
+  if(Math.random()<eps) return moves[Math.floor(Math.random()*moves.length)];
+  let best=moves[0], bestV=-Infinity;
+  for(const idx of moves){
+    const v=cheapEvalTake(S,S.current,idx);
+    if(v>bestV){bestV=v;best=idx;}
+  }
+  return best;
+}
+function shouldUseJokerInPlayout(S){
+  if(!(S.players[S.current].joker && S.picksLeftThisTurn===1)) return false;
+  const moves=[];
+  const acc=accessibilitySim(S.tableau);
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) moves.push(i);
+  }
+  if(moves.length<2) return false;
+  const player=S.current;
+  if(canWinNowWithTwoPicksSim(S,player,moves,2)!==null) return true;
+  if(S.age==="ancient" && remainingCardsThisAgeSim(S)>6) return false;
+  const vals=moves.map(idx=>cheapEvalTake(S,player,idx)).sort((a,b)=>b-a);
+  const single=vals[0];
+  const two=vals[0]+0.85*vals[1];
+  const reserveBias=S.age==="ancient"?0.35:0.15;
+  return two>single+(0.55+reserveBias);
+}
+function chooseModernSwapSim(S,nextFirst){
+  return nextFirst;
+}
+function bestGreedyMoveForPlayer(S,player){
+  const options=legalMovesSim(S);
+  if(!options.length) return {idx:null,val:0};
+  let bestIdx=options[0],bestVal=-Infinity;
+  for(const idx of options){
+    const v=cheapEvalTake(S,player,idx);
+    if(v>bestVal){bestVal=v; bestIdx=idx;}
+  }
+  return {idx:bestIdx,val:bestVal};
+}
+function evaluateModernTurnOneSwing(baseState,nextFirst,aiPlayer=1){
+  const second=1-nextFirst;
+  const aiAsFirst=cloneState(baseState);
+  aiAsFirst.age="modern";
+  aiAsFirst.current=second;
+  aiAsFirst.picksLeftThisTurn=1;
+  aiAsFirst.tableau=buildTableau("modern",makeUnknownModernDeck());
+  const firstPick=bestGreedyMoveForPlayer(aiAsFirst,aiPlayer).val;
+
+  const aiAsSecond=cloneState(baseState);
+  aiAsSecond.age="modern";
+  aiAsSecond.current=nextFirst;
+  aiAsSecond.picksLeftThisTurn=1;
+  aiAsSecond.tableau=buildTableau("modern",makeUnknownModernDeck());
+  const opener=bestGreedyMoveForPlayer(aiAsSecond,nextFirst);
+  if(opener.idx!==null) applyTakeSim(aiAsSecond,opener.idx);
+  const reply=bestGreedyMoveForPlayer(aiAsSecond,aiPlayer).val;
+  return firstPick-reply;
+}
+function advanceAgeSim(S){
+  if(S.age==="ancient"){
+    const start=chooseModernSwapSim(S,S.nextAgeFirst,1);
+    S.current=start;
+    S.picksLeftThisTurn=1;
+    S.age="modern";
+    S.tableau=buildTableau("modern",makeUnknownModernDeck());
+    hideFaceDownInfoForSim(S.tableau);
+    return;
+  }
+  S.ended=true;
+}
+function playRandomTurn(S){
+  const moves=legalMovesSim(S);
+  if(!moves.length){S.picksLeftThisTurn=1; S.current=1-S.current; return;}
+  if(shouldUseJokerInPlayout(S)){
+    S.players[S.current].joker=false;
+    S.picksLeftThisTurn=2;
+  }
+  const idx=choosePlayoutMove(S,0.14);
+  if(idx===null){S.picksLeftThisTurn=1;S.current=1-S.current;return;}
+  applyTakeSim(S,idx);
+}
+function legalMovesSim(S){
+  const acc=accessibilitySim(S.tableau);
+  const res=[];
+  for(let i=0;i<S.tableau.slots.length;i++){
+    const sl=S.tableau.slots[i]; if(acc[i]&&!sl.removed&&!sl.faceDown) res.push(i);
+  }
+  return res;
+}
+function applyTakeSim(S,idx){
+  const slot=S.tableau.slots[idx], p=S.players[S.current];
+  slot.removed=true; p.cards.push(slot.card);
+  updateFeat(p.feat,slot.card);
+  S.picksLeftThisTurn=Math.max(0,S.picksLeftThisTurn-1);
+  const accAfter=accessibilitySim(S.tableau);
+  flipNewSim(S.tableau,accAfter);
+  const sup=checkSupremacySim(S); if(sup!==null){S.ended=true; S.winner=sup; return;}
+  if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
+  else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
+}
+function rewardForState(S,aiPlayer=1){
+  if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
+  const vp0=scoreFor(S,0);
+  const vp1=scoreFor(S,1);
+  const winner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,vp0,vp1);
+  if(winner===null) return 0.5;
+  return winner===aiPlayer?1:0;
+}
+function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
+  const S=cloneState(baseState);
+  const slot=S.tableau.slots[firstIdx];
+  const acc=accessibilitySim(S.tableau);
+  if(!acc[firstIdx]||slot.removed||slot.faceDown) return 0;
+  applyTakeSim(S,firstIdx);
+  if(S.ended) return rewardForState(S,aiPlayer);
+  let guard=500;
+  while(!S.ended && guard-->0) playRandomTurn(S);
+  return rewardForState(S,aiPlayer);
+}
+function cloneState(S){
+  return {
+    age:S.age,current:S.current,ended:S.ended,nextAgeFirst:S.nextAgeFirst,picksLeftThisTurn:S.picksLeftThisTurn,
+    players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,name:p.name,isAI:p.isAI,feat:cloneFeat(p.feat)})),
+    tableau:{
+      slots:S.tableau.slots.map(s=>({...s})),
+      coveredBy:S.tableau.coveredBy,
+      coveredByRev:S.tableau.coveredByRev,
+      hiddenPool:(S.tableau.hiddenPool||[]).slice()
+    },
+    decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},winner:S.winner
+  };
+}
+function estimatePolicyEV(startState,aiPlayer=1,rollouts=64){
+  let sum=0;
+  for(let i=0;i<rollouts;i++){
+    const C=cloneState(startState);
+    let guard=600;
+    while(!C.ended && guard-->0) playRandomTurn(C);
+    sum+=rewardForState(C,aiPlayer);
+  }
+  return sum/Math.max(1,rollouts);
+}
+function estimateStateEV(baseState,aiPlayer=1,rollouts=20){
+  const options=legalMovesSim(baseState);
+  if(!options.length) return rewardForState(baseState,aiPlayer);
+  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
+  let total=0;
+  for(let i=0;i<rollouts;i++){
+    const idx=ucbSelect(stats,++total,0.9);
+    const res=simulateFromMoveState(baseState,idx,aiPlayer);
+    const st=stats.get(idx); st.n++; st.w+=res;
+  }
+  let best=0;
+  for(const st of stats.values()) best=Math.max(best,st.w/Math.max(1,st.n));
+  return best;
+}
+function selectMoveUcb(baseState,budgetMs=3000,aiPlayer=1){
+  const start=performance.now();
+  const options=legalMovesSim(baseState);
+  if(!options.length) return {idx:null,mean:0};
+  const stats=new Map(options.map(i=>[i,{n:0,w:0}]));
+  let total=0;
+  while(performance.now()-start<budgetMs){
+    const idx=ucbSelect(stats,++total,0.9);
+    const res=simulateFromMoveState(baseState,idx,aiPlayer);
+    const st=stats.get(idx); st.n++; st.w+=res;
+  }
+  let best=options[0],bestVal=-Infinity;
+  for(const [idx,st] of stats.entries()){
+    const v=st.w/Math.max(1,st.n);
+    if(v>bestVal){bestVal=v;best=idx;}
+  }
+  return {idx:best,mean:bestVal};
+}
+function remainingCardsThisAgeSim(S){
+  let n=0;
+  for(const sl of S.tableau.slots) if(!sl.removed) n++;
+  return n;
+}
+function jokerDecisionThresholdSim(S,player=S.current){
+  const left=remainingCardsThisAgeSim(S);
+  let threshold=0.08;
+  if(S.age==="ancient"){
+    if(left>12) threshold=0.11;
+    else if(left>7) threshold=0.09;
+    else threshold=0.07;
+    const t=Math.min(1,Math.max(0,left/18));
+    const second=1-S.nextAgeFirst;
+    threshold+=0.04+0.05*t;
+    if(player===second) threshold+=0.03+0.04*t;
+  }else{
+    threshold=left>10?0.09:0.06;
+  }
+  return threshold;
+}
+function canWinNowWithOnePickSim(S,player=S.current,moves=legalMovesSim(S)){
+  for(const idx of moves){
+    const C=cloneState(S);
+    C.current=player;
+    C.picksLeftThisTurn=1;
+    applyTakeSim(C,idx);
+    if(C.ended && C.winner===player) return idx;
+  }
+  return null;
+}
+function canWinNowWithTwoPicksSim(S,player=S.current,moves=legalMovesSim(S),firstCap=4){
+  if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
+  const firstCand=moves
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .slice(0,Math.min(firstCap,moves.length));
+  for(const {i:first} of firstCand){
+    const C=cloneState(S);
+    C.current=player;
+    C.players[player].joker=false;
+    C.picksLeftThisTurn=2;
+    applyTakeSim(C,first);
+    if(C.ended && C.winner===player) return first;
+    const m2=legalMovesSim(C);
+    for(const second of m2){
+      const D=cloneState(C);
+      applyTakeSim(D,second);
+      if(D.ended && D.winner===player) return first;
+    }
+  }
+  return null;
+}
+function opponentCanWinImmediatelySim(S,opponent){
+  const T=cloneState(S);
+  T.current=opponent;
+  T.picksLeftThisTurn=1;
+  if(canWinNowWithOnePickSim(T,opponent)!==null) return true;
+  if(T.players[opponent].joker && canWinNowWithTwoPicksSim(T,opponent,legalMovesSim(T),3)!==null) return true;
+  return false;
+}
+function findSafeSingleMoveSim(S,player=S.current){
+  const moves=legalMovesSim(S)
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .map(x=>x.i);
+  for(const idx of moves){
+    const C=cloneState(S);
+    C.current=player;
+    C.picksLeftThisTurn=1;
+    applyTakeSim(C,idx);
+    if(C.ended && C.winner===player) return idx;
+    if(!opponentCanWinImmediatelySim(C,1-player)) return idx;
+  }
+  return null;
+}
+function findSafeJokerFirstMoveSim(S,player=S.current){
+  if(!(S.players[player].joker && S.picksLeftThisTurn===1)) return null;
+  const firstMoves=legalMovesSim(S)
+    .map(i=>({i,v:cheapEvalTake(S,player,i)}))
+    .sort((a,b)=>b.v-a.v)
+    .slice(0,4)
+    .map(x=>x.i);
+  for(const first of firstMoves){
+    const C=cloneState(S);
+    C.current=player;
+    C.players[player].joker=false;
+    C.picksLeftThisTurn=2;
+    applyTakeSim(C,first);
+    if(C.ended && C.winner===player) return first;
+    const secondMoves=legalMovesSim(C)
+      .map(i=>({i,v:cheapEvalTake(C,player,i)}))
+      .sort((a,b)=>b.v-a.v)
+      .slice(0,4)
+      .map(x=>x.i);
+    for(const second of secondMoves){
+      const D=cloneState(C);
+      applyTakeSim(D,second);
+      if(D.ended && D.winner===player) return first;
+      if(!opponentCanWinImmediatelySim(D,1-player)) return first;
+    }
+  }
+  return null;
+}
+function chooseActionWithOptionalJoker(){
+  const base=cloneGameState();
+  const forced=legalMovesSim(base);
+  if(forced.length===1) return {useJoker:false,firstIdx:forced[0]};
+  const canJ=base.players[base.current].joker && base.picksLeftThisTurn===1;
+
+  const winNoJ=canWinNowWithOnePickSim(base,base.current,forced);
+  if(winNoJ!==null) return {useJoker:false,firstIdx:winNoJ};
+
+  if(canJ){
+    const winWithJ=canWinNowWithTwoPicksSim(base,base.current,forced,4);
+    if(winWithJ!==null) return {useJoker:true,firstIdx:winWithJ};
+
+    const safeNoJ=findSafeSingleMoveSim(base,base.current);
+    if(safeNoJ===null){
+      const safeWithJ=findSafeJokerFirstMoveSim(base,base.current);
+      if(safeWithJ!==null) return {useJoker:true,firstIdx:safeWithJ};
+    }
+  }
+
+  const mainBudgetMs=getAiThinkingBudgetMs(base);
+  const noJ=selectMoveUcb(base,mainBudgetMs,1);
+  if(!canJ || noJ.idx===null) return {useJoker:false,firstIdx:noJ.idx};
+  const yesState=cloneState(base);
+  yesState.players[yesState.current].joker=false;
+  yesState.picksLeftThisTurn=2;
+  const jokerBudgetMs=Math.max(900,Math.round(mainBudgetMs*0.4));
+  const yes=selectMoveUcb(yesState,jokerBudgetMs,1);
+  const threshold=jokerDecisionThresholdSim(base,base.current);
+  if(yes.idx!==null && yes.mean>noJ.mean+threshold) return {useJoker:true,firstIdx:yes.idx};
+  return {useJoker:false,firstIdx:noJ.idx};
+}
+function scoreFor(S,i){
+  const a=S.players[0].cards,b=S.players[1].cards;
+  const sw=[swords(a),swords(b)], food=[foodPower(a),foodPower(b)];
+  let vp=[0,0];
+  if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
+  if(food[0]>food[1]) vp[0]+=MILITARY_VP; else if(food[1]>food[0]) vp[1]+=MILITARY_VP;
+  const techSeqs=[...suitSequences(a,"H").map(s=>({...s,o:0})),...suitSequences(b,"H").map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
+  const techTopThree=awardTopThreePlacements(techSeqs,"o");
+  vp[0]+=techTopThree.vp[0];
+  vp[1]+=techTopThree.vp[1];
+  const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
+  const cultureTopThree=awardTopThreePlacements(seqs,"o");
+  vp[0]+=cultureTopThree.vp[0];
+  vp[1]+=cultureTopThree.vp[1];
+  vp[0]+=calamityPenalty(a);
+  vp[1]+=calamityPenalty(b);
+  return vp[i];
+}
+
+function maybeRunAiTurn(){
+  if(aiTimer){clearTimeout(aiTimer); aiTimer=null;}
+  return;
+}
+
+async function endTurnOrAge(){
+  const slots=G.tableau.slots;
+  if(slots.every(s=>isSlotGone(s))){
+    if(G.age==="ancient"){
+      const modernDeck=G.decks.modern.slice();
+      const modernTableau=buildTableau("modern",modernDeck);
+      const start=await maybeModernSwap(G.nextAgeFirst,modernTableau);
+      G.age="modern";
+      G.decks.modern=modernDeck;
+      G.tableau=modernTableau;
+      G.pendingAIRemovals=[];
+      G.current=start;
+      G.picksLeftThisTurn=1;
+      log(`Phase One ends. Phase Two starts with ${G.players[G.current].name}.`);
+      render(); return;
+    }
+    G.ended=true;
+    const sc=scoreGame();
+    const w=winnerOnVpWithRedTieBreak(G.players[0].cards,G.players[1].cards,sc.vp[0],sc.vp[1]);
+    log(`Game over. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
+    log(`🏆 ${G.players[w].name} wins on points (solo tie-break rules applied).`);
+    showEndgameModal(sc,w);
+    render(); return;
+  }
+  if(G.awaitingRivalChoice){
+    render();
+    return;
+  }
+  if(G.picksLeftThisTurn<=0){
+    G.picksLeftThisTurn=1;
+    G.current=SOLO_MODE?0:1-G.current;
+  }
+  render();
+}
+
+function render(){
+  if(!G) return;
+  document.getElementById("agePill").textContent=`Phase: ${G.age==="ancient"?"One":"Two"}`;
+  const sideTurn=document.getElementById("sideTurnPill");
+  if(G.ended){
+    sideTurn.textContent="Turn: -";
+    sideTurn.classList.remove("aiTurn");
+  }else if(G.awaitingRivalChoice){
+    sideTurn.textContent="Turn: Choose AI card";
+    sideTurn.classList.add("aiTurn");
+  }else{
+    sideTurn.textContent="Turn: You";
+    sideTurn.classList.remove("aiTurn");
+  }
+
+  const sg=document.getElementById("statusGrid");
+  const sw=G.players.map(p=>swords(p.cards));
+  const food=G.players.map(p=>foodPower(p.cards));
+  const militaryLead=sw[1]-sw[0];
+  const foodLead=food[1]-food[0];
+  const supremacyLabel=militaryLead===0?"Tie":(militaryLead>0?"AI":"You");
+  const foodSupremacyLabel=foodLead===0?"Tie":(foodLead>0?"AI":"You");
+  const rivalState=G.awaitingRivalChoice?`Rival pick: ${G.rivalChoiceReason}`:'Rival pick: —';
+  sg.innerHTML=`<div class='pill'>♠ Diff: ${supremacyLabel} +${Math.abs(militaryLead)}</div><div class='pill'>♣ Diff: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>${rivalState}</div>`;
+  const useBtn=document.getElementById("useJokerBtn");
+  useBtn.disabled=!canUseJokerDouble(0);
+  useBtn.onclick=()=>{ if(useJokerDouble(0)) render(); };
+
+  const col=document.getElementById("collections");
+  col.innerHTML="";
+  const culturePlacements=sequencePlacementByPlayer(G.players.map(p=>p.cards),"D");
+  const technologyPlacements=sequencePlacementByPlayer(G.players.map(p=>p.cards),"H");
+  for(let i=0;i<2;i++){
+    const p=G.players[i];
+    const el=document.createElement("div"); el.className=`pbox ${G.current===i&&!G.ended?"active":""}`;
+    const bySuit={S:[],H:[],D:[],C:[]};
+    p.cards.forEach(c=>bySuit[c.suit].push(c));
+    const suitMetric={
+      S:String(swords(p.cards)),
+      H:technologyPlacements[i],
+      C:String(foodPower(p.cards)),
+      D:culturePlacements[i]
+    };
+    const suitCols=Object.entries(bySuit).map(([s,cards])=>{
+      const sorted=sortCardsByRank(cards);
+      const chips=groupedSuitTokens(s,sorted)
+        .map(token=>token.cards.length>1
+          ? `<span class='runGroup'>${token.cards.map(c=>`<span class='chip s${c.suit}'>${label(c)}</span>`).join("")}</span>`
+          : `<span class='chip s${token.cards[0].suit}'>${label(token.cards[0])}</span>`)
+        .join("");
+      return `<div class='takenCol'><div class='takenTitle'>${SUIT_NAME[s]} (${suitMetric[s]})</div><div class='cardsMini'>${cards.length?chips:"<span class='chip'>—</span>"}</div></div>`;
+    }).join("");
+    el.innerHTML=`<div class='playerHeader'><strong>${p.name}</strong> (${p.cards.length} cards)</div><div class='takenGrid'>${suitCols}</div>`;
+    col.appendChild(el);
+  }
+
+  const t=document.getElementById("tableau"); const wrap=t.parentElement;
+  const {slots,geom}=G.tableau;
+  const wrapStyle=getComputedStyle(wrap);
+  const padX=(parseFloat(wrapStyle.paddingLeft)||0)+(parseFloat(wrapStyle.paddingRight)||0);
+  const padY=(parseFloat(wrapStyle.paddingTop)||0)+(parseFloat(wrapStyle.paddingBottom)||0);
+  const availableW=Math.max(200,wrap.clientWidth-padX);
+  const scale=Math.min(1,availableW/geom.width);
+  const scaledH=geom.height*scale;
+  t.style.width=geom.width+"px";
+  t.style.height=geom.height+"px";
+  t.style.transform=`scale(${scale})`;
+  wrap.style.height=`${Math.ceil(scaledH+padY)}px`;
+  t.innerHTML="";
+  const acc=accessibility(G.tableau);
+  for(let i=0;i<slots.length;i++){
+    const s=slots[i];
+    const e=document.createElement("div");
+    const hasChildren=(G.tableau.coveredBy[i]||[]).some(c=>!isSlotGone(slots[c]));
+    const hasParent=(G.tableau.coveredByRev?.[i]||[]).some(p=>!isSlotGone(slots[p]));
+    const isRivalChoice=G.awaitingRivalChoice;
+    const isRivalValid=isRivalChoice && G.rivalChoiceIndices.includes(i);
+    const canOpen=acc[i]&&!s.faceDown&&!isSlotGone(s);
+    const isDisabledByRival=isRivalChoice && !isRivalValid;
+    e.className=`card ${s.removed?"removed":""} ${s.pendingAIPick?"aiPickedPreview":""} ${s.faceDown?"faceDown":""} ${!s.faceDown&&!isSlotGone(s)?cardClass(s.card):""} ${canOpen&&!isDisabledByRival?"open accessible":""} ${(!canOpen||isDisabledByRival)&&!isSlotGone(s)&&!s.faceDown?"blocked":""} ${hasChildren?"covering":""} ${hasParent?"overlapped":""}`;
+    if(isRivalValid) e.classList.add("accessible");
+    e.style.left=s.x+"px"; e.style.top=s.y+"px"; e.style.zIndex=String((s.row+1)*100+s.col);
+    e.innerHTML=s.faceDown?"<div class='big'>🂠</div>":`<div class='cornerL'></div><div class='cornerR'></div><div class='big'>${label(s.card)}</div>`;
+    e.onclick=()=>onHumanCardClick(i);
+    t.appendChild(e);
+  }
+  maybeRunAiTurn();
+}
+
+window.addEventListener("resize",scheduleRender);
+window.addEventListener("load",()=>{
+  scheduleRender();
+  requestAnimationFrame(scheduleRender);
+});
+
+const tableauWrapEl=document.querySelector(".tableauWrap");
+if(tableauWrapEl && typeof ResizeObserver!=="undefined"){
+  const tableauResizeObserver=new ResizeObserver(()=>scheduleRender());
+  tableauResizeObserver.observe(tableauWrapEl);
+}
+
+if(document.fonts?.ready){
+  document.fonts.ready.then(()=>scheduleRender());
+}
+
+document.getElementById("newGameBtn").onclick=async()=>{
+  const first=await promptChooseStarter();
+  if(first===null) return;
+  newGame(first);
+};
+document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
+
+window.addEventListener("DOMContentLoaded",async()=>{
+  // Prepara subito tutta la UI (tableau/collector/log) dietro al popup iniziale.
+  // Usiamo temporaneamente P1 come starter, poi riallineiamo allo starter scelto.
+  newGame(0);
+
+  const first=await promptChooseStarter({
+    title:"New game",
+    showConfirmText:false,
+    showCancel:false
+  });
+
+  if(first===1) newGame(1);
+});
