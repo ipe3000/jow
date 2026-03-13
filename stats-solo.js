@@ -189,20 +189,7 @@ function stateValueForA(S,rewardMode="insta"){
 function chooseRivalIdxForA(S,options,rewardMode="insta"){
  if(!options.length) return null;
  if(options.length===1) return options[0];
- let best=options[0], bestV=-Infinity;
- for(const idx of options){
-  const C=cloneState(S);
-  applyTake(C,1,idx);
-  let v=stateValueForA(C,rewardMode);
-  const replyMoves=legalMoves(C);
-  if(!C.ended && replyMoves.length){
-    let bestReply=-Infinity;
-    for(const r of replyMoves) bestReply=Math.max(bestReply,cheapEvalTake(C,0,r));
-    v+=0.03*bestReply;
-  }
-  if(v>bestV){bestV=v; best=idx;}
- }
- return best;
+ return options[Math.floor(Math.random()*options.length)];
 }
 
 function cheapEvalTake(S,p,idx){
@@ -379,7 +366,7 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  document.getElementById("kGames").textContent=String(out.length); document.getElementById("kAWin").textContent=pct(aWin,out.length); document.getElementById("kBWin").textContent=pct(bWin,out.length); document.getElementById("kDraw").textContent=pct(draw,out.length);
  const margins=out.map(x=>x.margin); renderHistogram(margins);
  renderRows(document.getElementById("scoreTable"),[["Average VP",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP",out.map(x=>x.vpA).sort((a,b)=>a-b)[Math.floor(out.length/2)],out.map(x=>x.vpB).sort((a,b)=>a-b)[Math.floor(out.length/2)]],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
- renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks (chosen by A)",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
+ renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks (random)",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
  renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.tech[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.tech[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Calamity VP (A: 1+K, B: 2+K)",avg(pointsOnly.map(x=>x.score.calamity[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.calamity[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
