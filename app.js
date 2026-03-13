@@ -277,6 +277,33 @@ function suitSequences(cards,suit){
 function diamondSequences(cards){
   return suitSequences(cards,"D");
 }
+function compareSequences(a,b){
+  if(!a && !b) return 0;
+  if(!a) return -1;
+  if(!b) return 1;
+  if(a.length!==b.length) return a.length>b.length?1:-1;
+  if(a.high!==b.high) return a.high>b.high?1:-1;
+  return 0;
+}
+function bestRedSuitSequence(cards){
+  const best=suit=>{
+    const seq=suitSequences(cards,suit);
+    if(!seq.length) return null;
+    return seq.slice().sort((a,b)=>b.length-a.length || b.high-a.high)[0];
+  };
+  const bestHeart=best("H");
+  const bestDiamond=best("D");
+  const cmp=compareSequences(bestHeart,bestDiamond);
+  return cmp>=0?bestHeart:bestDiamond;
+}
+function winnerOnVpWithRedTieBreak(cards0,cards1,vp0,vp1){
+  if(vp0!==vp1) return vp0>vp1?0:1;
+  const red0=bestRedSuitSequence(cards0);
+  const red1=bestRedSuitSequence(cards1);
+  const cmp=compareSequences(red0,red1);
+  if(cmp===0) return null;
+  return cmp>0?0:1;
+}
 function awardTopThreePlacements(seqs,ownerKey="owner"){
   const vp=[0,0];
   const placements=[];
@@ -796,10 +823,11 @@ function applyTakeSim(S,idx){
 }
 function rewardForState(S,aiPlayer=1){
   if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
-  const scAi=scoreFor(S,aiPlayer), scOp=scoreFor(S,1-aiPlayer);
-  if(scAi>scOp) return 1;
-  if(scAi===scOp) return 0.5;
-  return 0;
+  const vp0=scoreFor(S,0);
+  const vp1=scoreFor(S,1);
+  const winner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,vp0,vp1);
+  if(winner===null) return 0.5;
+  return winner===aiPlayer?1:0;
 }
 function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
   const S=cloneState(baseState);
@@ -1064,9 +1092,9 @@ async function endTurnOrAge(){
     }
     G.ended=true;
     const sc=scoreGame();
-    const w=sc.vp[0]===sc.vp[1]?null:(sc.vp[0]>sc.vp[1]?0:1);
+    const w=winnerOnVpWithRedTieBreak(G.players[0].cards,G.players[1].cards,sc.vp[0],sc.vp[1]);
     log(`Game over. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
-    log(w===null?"Draw." : `🏆 ${G.players[w].name} wins on points.`);
+    log(w===null?"Draw." : `🏆 ${G.players[w].name} wins on points (red-sequence tie-break if needed).`);
     showEndgameModal(sc,w);
     render(); return;
   }
