@@ -5,6 +5,7 @@ const MILITARY_VP=2;
 const CALAMITY_KING_THRESHOLD=2;
 const CALAMITY_VP_PENALTY=-2;
 const SOLO_SUPREMACY_THRESHOLD_AI=4;
+const SOLO_SUPREMACY_THRESHOLD_HUMAN=10;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
@@ -380,9 +381,18 @@ function scoreGame(){
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
+  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♠ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
+  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return {winner:0,reason:`♣ You immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_HUMAN})`};
   if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♠ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return {winner:1,reason:`♣ AI immediate victory (>=${SOLO_SUPREMACY_THRESHOLD_AI})`};
   return null;
+}
+
+function highValueBlackOpenMoves(open){
+  return open.filter(i=>{
+    const card=G.tableau.slots[i]?.card;
+    return card && (card.suit==="S" || card.suit==="C") && swordValue(card)===2;
+  });
 }
 
 function newGame(){
@@ -524,6 +534,20 @@ function startRivalSelection(playerCard){
     return;
   }
   G.awaitingRivalChoice=true;
+  const blackHighValue=highValueBlackOpenMoves(open);
+  if(blackHighValue.length===1){
+    G.rivalChoiceIndices=blackHighValue;
+    G.rivalChoiceReason="black 2-point card (forced priority)";
+    resolveRivalChoice(blackHighValue[0]);
+    return;
+  }
+  if(blackHighValue.length>1){
+    G.rivalChoiceIndices=blackHighValue;
+    G.rivalChoiceReason="choose a black 2-point card for AI";
+    log("Choose AI card: it must be a black 2-point card (10/J/Q/K of ♠ or ♣).");
+    render();
+    return;
+  }
   const sameSuit=open.filter(i=>G.tableau.slots[i].card.suit===playerCard.suit);
   if(sameSuit.length===1){
     G.rivalChoiceReason=`same suit ${SUIT_NAME[playerCard.suit]} (forced)`;
@@ -722,6 +746,8 @@ function accessibilitySim(T){
 }
 function checkSupremacySim(S){
   const f0=S.players[0].feat, f1=S.players[1].feat;
+  if(f0.sw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
+  if(f0.cw>=SOLO_SUPREMACY_THRESHOLD_HUMAN) return 0;
   if(f1.sw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   if(f1.cw>=SOLO_SUPREMACY_THRESHOLD_AI) return 1;
   return null;
