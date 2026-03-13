@@ -515,6 +515,9 @@ function startRivalSelection(playerCard){
     return;
   }
   if(open.length===1){
+    G.awaitingRivalChoice=true;
+    G.rivalChoiceIndices=open.slice();
+    G.rivalChoiceReason="single unlocked card (forced)";
     resolveRivalChoice(open[0]);
     return;
   }
