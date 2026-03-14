@@ -165,15 +165,12 @@ function leftmostRightmostOpenMoves(S,open){
 function highValueBlackOpenMoves(S,open){
  return open.filter(i=>{const card=S.tableau.slots[i]?.card; return card && (card.suit==="S"||card.suit==="C") && swordValue(card)===2;});
 }
-function rivalOptionsForResponse(S,playerCard){
+function rivalOptionsForResponse(S){
  const open=legalMoves(S);
  if(open.length<=1) return {options:open,forced:true,reason:"single unlocked card"};
  const black=highValueBlackOpenMoves(S,open);
  if(black.length===1) return {options:black,forced:true,reason:"forced black 2-point"};
  if(black.length>1) return {options:black,forced:false,reason:"black 2-point choice"};
- const sameSuit=open.filter(i=>S.tableau.slots[i].card.suit===playerCard.suit);
- if(sameSuit.length===1) return {options:sameSuit,forced:true,reason:"forced same suit"};
- if(sameSuit.length>1) return {options:sameSuit,forced:false,reason:"same suit choice"};
  const lr=leftmostRightmostOpenMoves(S,open);
  return {options:lr,forced:lr.length===1,reason:"leftmost/rightmost"};
 }
@@ -247,7 +244,7 @@ function randomPlayout(S,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){
   applyTake(S,0,idx);
   if(S.ended) continue;
   if(S.tableau.slots.every(s=>s.removed)) continue;
-  const rr=rivalOptionsForResponse(S,card);
+  const rr=rivalOptionsForResponse(S);
   if(rr.options.length){
    const ridx=chooseRivalIdxForA(S,rr.options,rewardMode);
    if(ridx!==null) applyTake(S,1,ridx);
@@ -272,7 +269,7 @@ function chooseMoveUcb(S,moves,mcCfg,{topK=4,rewardMode="insta",exploration=0.85
   const card=C.tableau.slots[idx].card;
   applyTake(C,0,idx);
   if(!C.ended){
-   const rr=rivalOptionsForResponse(C,card);
+   const rr=rivalOptionsForResponse(C);
    if(rr.options.length){
     const ridx=chooseRivalIdxForA(C,rr.options,rewardMode);
     if(ridx!==null) applyTake(C,1,ridx);
@@ -366,7 +363,7 @@ function simulateOne(startPlayer,strA,mcCfg){
   if(S.tableau.slots.every(s=>s.removed)){maybeAdvanceAge(S); continue;}
 
   if(lastPlayerCard){
-   const rr=rivalOptionsForResponse(S,lastPlayerCard);
+   const rr=rivalOptionsForResponse(S);
    if(rr.options.length){
     const ridx=chooseRivalIdxForA(S,rr.options,"insta");
     if(ridx!==null) applyTake(S,1,ridx);
