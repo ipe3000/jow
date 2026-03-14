@@ -460,7 +460,7 @@ function takeCard(idx){
   }
 
   if(!pl.isAI && G.picksLeftThisTurn<=0){
-    startRivalSelection(s.card);
+    startRivalSelection();
     return;
   }
   endTurnOrAge();
@@ -503,7 +503,7 @@ function resolveRivalChoice(idx){
   endTurnOrAge();
 }
 
-function startRivalSelection(playerCard){
+function startRivalSelection(){
   const open=legalOpenMoves(G.tableau);
   if(G.phaseTwoOpeningRivalPickPending){
     G.phaseTwoOpeningRivalPickPending=false;
@@ -566,28 +566,13 @@ function startRivalSelection(playerCard){
     render();
     return;
   }
-  const sameSuit=open.filter(i=>G.tableau.slots[i].card.suit===playerCard.suit);
-  if(sameSuit.length===1){
-    G.rivalChoiceReason=`same suit ${SUIT_NAME[playerCard.suit]} (forced)`;
-    G.rivalChoiceIndices=sameSuit.slice();
-    resolveRivalChoice(sameSuit[0]);
-    return;
-  }
-  G.rivalChoiceSuit=playerCard.suit;
-  if(sameSuit.length>1){
-    G.rivalChoiceIndices=sameSuit;
-    G.rivalChoiceReason=`choose a ${SUIT_NAME[playerCard.suit]} card for AI`;
-    log(`Choose AI card: it must be ${SUIT_NAME[playerCard.suit]} (same suit as your pick).`);
-    render();
-    return;
-  }
   G.rivalChoiceIndices=leftmostRightmostOpenMoves(open);
   G.rivalChoiceReason="choose leftmost or rightmost unlocked card for AI";
   if(G.rivalChoiceIndices.length===1){
     resolveRivalChoice(G.rivalChoiceIndices[0]);
     return;
   }
-  log("No same-suit unlocked card: choose leftmost or rightmost unlocked card for AI.");
+  log("Choose AI card: leftmost or rightmost unlocked card.");
   render();
 }
 
