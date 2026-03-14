@@ -3,7 +3,7 @@ const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9",
 const DIAMOND_VP_AWARDS=[6,3,1];
 const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
-const SOLO_SUPREMACY_THRESHOLD=5;
+const SOLO_SUPREMACY_THRESHOLD=4;
 const CALAMITY_VP_PENALTY=-2;
 const SOLO_NON_HUMAN_PLAYER_INDEX=1;
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
