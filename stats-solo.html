@@ -30,6 +30,7 @@
         <label>AI A strategy <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option><option value="mc_insta_win">Monte Carlo Insta-Win-focused</option><option value="mc_scoring">Monte Carlo Scoring-focused</option></select></label>
         <label>AI B behavior <input type="text" value="Deterministic solo rules" disabled /></label>
         <label>Monte Carlo AI strength (1-10) <input id="mcStrength" type="number" min="1" max="10" step="1" value="1" /></label>
+        <label>Soglia supremazia immediata AI B (♠/♣) <input id="supremacyThreshold" type="number" min="1" max="20" step="1" value="3" /></label>
         <label>Starting player <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternate</option></select></label>
         <button id="runBtn">Run simulation</button>
         <div id="status" class="small">Ready.</div>
