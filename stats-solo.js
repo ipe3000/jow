@@ -3,7 +3,7 @@ const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9",
 const DIAMOND_VP_AWARDS=[6,3,1];
 const TOP_THREE_SWEEP_BONUS=3;
 const MILITARY_VP=2;
-const SOLO_SUPREMACY_THRESHOLD=3;
+const DEFAULT_SOLO_SUPREMACY_THRESHOLD=3;
 const CALAMITY_VP_PENALTY=-2;
 const SOLO_NON_HUMAN_PLAYER_INDEX=1;
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
@@ -29,17 +29,23 @@ const TABLEAU_MODEL={
 const runBtn=document.getElementById("runBtn"), statusEl=document.getElementById("status");
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const mcStrengthInput=document.getElementById("mcStrength");
+const supremacyThresholdInput=document.getElementById("supremacyThreshold");
 
 function parseIntOrDefault(v,d){const n=Number(v); return Number.isFinite(n)?Math.round(n):d;}
 function readMcStrength(){return clamp(parseIntOrDefault(mcStrengthInput.value,1),1,10);}
 function normalizeMcStrengthInput(){mcStrengthInput.value=String(readMcStrength());}
+function readSupremacyThreshold(){return clamp(parseIntOrDefault(supremacyThresholdInput.value,DEFAULT_SOLO_SUPREMACY_THRESHOLD),1,20);}
+function normalizeSupremacyThresholdInput(){supremacyThresholdInput.value=String(readSupremacyThreshold());}
 function setParamsFromQuery(){
  const params=new URLSearchParams(location.search);
  if(params.has("mcStrength")) mcStrengthInput.value=params.get("mcStrength");
+ if(params.has("supremacyThreshold")) supremacyThresholdInput.value=params.get("supremacyThreshold");
  normalizeMcStrengthInput();
+ normalizeSupremacyThresholdInput();
 }
 setParamsFromQuery();
 mcStrengthInput.addEventListener("change",normalizeMcStrengthInput);
+supremacyThresholdInput.addEventListener("change",normalizeSupremacyThresholdInput);
 
 function mcSettings(level){
  const strength=clamp(parseIntOrDefault(level,1),1,10);
@@ -133,10 +139,10 @@ function diamondAdjFromMask(mask){mask&=MASK13; const rot=((mask<<1)&MASK13) | (
 function makeFeat(){return {sw:0,cw:0,hMask:0,hAdj:0,dMask:0,dAdj:0};}
 function cloneFeat(feat){return {...feat};}
 function updateFeat(feat,card){if(card.suit==="S") feat.sw+=swordValue(card); if(card.suit==="C") feat.cw+=swordValue(card); if(card.suit==="H"){feat.hMask|=bitOfRank(card.rank); feat.hAdj=diamondAdjFromMask(feat.hMask);} if(card.suit==="D"){feat.dMask|=bitOfRank(card.rank); feat.dAdj=diamondAdjFromMask(feat.dMask);}}
-function checkSupremacy(S){
+function checkSupremacy(S,supremacyThreshold){
  const f0=S.players[0].feat, f1=S.players[1].feat;
- if(f1.sw-f0.sw>=SOLO_SUPREMACY_THRESHOLD) return {winner:1,reason:"Military Supremacy"};
- if(f1.cw-f0.cw>=SOLO_SUPREMACY_THRESHOLD) return {winner:1,reason:"Food Supremacy"};
+ if(f1.sw-f0.sw>=supremacyThreshold) return {winner:1,reason:"Military Supremacy"};
+ if(f1.cw-f0.cw>=supremacyThreshold) return {winner:1,reason:"Food Supremacy"};
  return null;
 }
 function legalMoves(S){const acc=accessibility(S.tableau), res=[]; for(let i=0;i<S.tableau.slots.length;i++){const s=S.tableau.slots[i]; if(acc[i] && !s.removed && !s.faceDown) res.push(i);} return res;}
@@ -147,7 +153,7 @@ function applyTake(S,player,idx){
  S.players[player].cards.push(slot.card);
  updateFeat(S.players[player].feat,slot.card);
  flipNew(S.tableau.slots,accessibility(S.tableau));
- const sup=checkSupremacy(S);
+ const sup=checkSupremacy(S,S.supremacyThreshold);
  if(sup){S.ended=true; S.winBy=sup.reason; S.winner=sup.winner;}
  return true;
 }
@@ -212,7 +218,7 @@ function cheapEvalTake(S,p,idx){
  return dSw*1.25 + dFood*HEURISTIC_WEIGHT_FOOD + dTech*HEURISTIC_WEIGHT_TECH + dDia*HEURISTIC_WEIGHT_DIAMOND + deny + pressure;
 }
 
-function cloneState(S){return {age:S.age,ended:S.ended,nextAgeFirst:S.nextAgeFirst,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
+function cloneState(S){return {age:S.age,ended:S.ended,nextAgeFirst:S.nextAgeFirst,supremacyThreshold:S.supremacyThreshold,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
 
 function randomPlayout(S,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){
  let guard=600;
@@ -325,10 +331,10 @@ function maybeAdvanceAge(S){
  S.ended=true;
 }
 
-function simulateOne(startPlayer,strA,mcCfg){
+function simulateOne(startPlayer,strA,mcCfg,supremacyThreshold){
  const {ancient,modern}=splitDeckForAges(makeDeck());
  const firstPlayer=startPlayer===1?1:0;
- const S={age:"ancient",nextAgeFirst:1-firstPlayer,ended:false,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:false,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
+ const S={age:"ancient",nextAgeFirst:1-firstPlayer,ended:false,supremacyThreshold,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:false,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
 
  if(firstPlayer===1){
   const openingRival=rivalOptionsForOpening(S);
@@ -382,11 +388,12 @@ function simulateOne(startPlayer,strA,mcCfg){
 }
 function renderRows(tbody,rows){tbody.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td>${r[2]!==undefined?`<td>${r[2]}</td>`:""}</tr>`).join("");}
 function renderHistogram(margins){const buckets=new Map(); for(let x=-20;x<=20;x+=4) buckets.set(`${x}..${x+3}`,0); buckets.set("<=-21",0); buckets.set(">=21",0); for(const m of margins){if(m<=-21)buckets.set("<=-21",buckets.get("<=-21")+1); else if(m>=21)buckets.set(">=21",buckets.get(">=21")+1); else {const b=Math.floor((m+20)/4),s=-20+b*4,key=`${s}..${s+3}`; buckets.set(key,buckets.get(key)+1);}} const total=Math.max(1,margins.length),maxN=Math.max(1,...buckets.values()); document.getElementById("marginHist").innerHTML=[...buckets.entries()].map(([k,v])=>`<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${Math.round(100*v/maxN)}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`).join("");}
-async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getElementById("games").value)||1000)); const sA=document.getElementById("playerStrategy").value, sm=document.getElementById("startMode").value, mcCfg=mcSettings(readMcStrength());
+async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getElementById("games").value)||1000)); const sA=document.getElementById("playerStrategy").value, sm=document.getElementById("startMode").value, mcCfg=mcSettings(readMcStrength()), supremacyThreshold=readSupremacyThreshold();
+ normalizeSupremacyThresholdInput();
  runBtn.disabled=true; const out=[]; let lastUiTick=performance.now();
  for(let i=0;i<n;i++){
   const start=sm==="alternate"?(i%2):sm==="a"?0:1;
-  out.push(simulateOne(start,sA,mcCfg));
+  out.push(simulateOne(start,sA,mcCfg,supremacyThreshold));
   const done=i+1;
   const now=performance.now();
   if(done===n || now-lastUiTick>=33){
