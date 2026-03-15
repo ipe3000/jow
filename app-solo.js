@@ -32,6 +32,7 @@ let aiTimer=null;
 let renderScheduled=false;
 const SOLO_MODE=true;
 const SOLO_NON_HUMAN_PLAYER_INDEX=1;
+const SOLO_JOKER_ENABLED=false;
 
 const AI_BASE_BUDGET_MS=5000;
 const HEURISTIC_WEIGHT_FOOD=1.25;
@@ -404,8 +405,8 @@ function newGame(){
     age:"ancient", nextAgeFirst:1-first, current:first, ended:false,
     decks:{ancient,modern}, tableau:null,
     players:[
-      {name:"You",cards:[],joker:true,isAI:false,feat:makeFeat()},
-      {name:"AI",cards:[],joker:true,isAI:true,feat:makeFeat()}
+      {name:"You",cards:[],joker:SOLO_JOKER_ENABLED,isAI:false,feat:makeFeat()},
+      {name:"AI",cards:[],joker:SOLO_JOKER_ENABLED,isAI:true,feat:makeFeat()}
     ],
     lastTaken:null, picksLeftThisTurn:1,
     pendingAIRemovals:[],
@@ -1233,10 +1234,6 @@ function render(){
   const foodSupremacyLabel=foodLead===0?"Tie":(foodLead>0?"AI":"You");
   const rivalState=G.awaitingRivalChoice?`Rival pick: ${G.rivalChoiceReason}`:'Rival pick: —';
   sg.innerHTML=`<div class='pill'>♠ Diff: ${supremacyLabel} +${Math.abs(militaryLead)}</div><div class='pill'>♣ Diff: ${foodSupremacyLabel} +${Math.abs(foodLead)}</div><div class='pill'>${rivalState}</div>`;
-  const useBtn=document.getElementById("useJokerBtn");
-  useBtn.disabled=!canUseJokerDouble(0);
-  useBtn.onclick=()=>{ if(useJokerDouble(0)) render(); };
-
   const col=document.getElementById("collections");
   col.innerHTML="";
   const culturePlacements=sequencePlacementByPlayer(G.players.map(p=>p.cards),"D");
@@ -1317,8 +1314,6 @@ if(document.fonts?.ready){
 document.getElementById("newGameBtn").onclick=()=>{
   newGame();
 };
-document.getElementById("useJokerBtn").onclick=()=>{ if(useJokerDouble(0)) render(); };
-
 window.addEventListener("DOMContentLoaded",()=>{
   newGame();
 });
