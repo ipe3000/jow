@@ -330,7 +330,7 @@ function sequencePlacementByPlayer(playersCards,suit){
   const ranked=[
     ...suitSequences(playersCards[0],suit).map(s=>({...s,owner:0})),
     ...suitSequences(playersCards[1],suit).map(s=>({...s,owner:1}))
-  ].sort((a,b)=>b.length-a.length || b.high-a.high);
+  ].sort((a,b)=>b.length-a.length || b.owner-a.owner);
   for(let i=0;i<Math.min(3,ranked.length);i++) placements[ranked[i].owner].push(labels[i]);
   return placements.map(p=>p.length?p.join(", "):"—");
 }
@@ -345,7 +345,7 @@ function scoreGame(){
 
   const technology=[0,0];
   const techSeqs=[...suitSequences(p0,"H").map(s=>({...s,owner:0})),...suitSequences(p1,"H").map(s=>({...s,owner:1}))]
-    .sort((a,b)=>b.length-a.length || b.high-a.high);
+    .sort((a,b)=>b.length-a.length || b.owner-a.owner);
   const techTopThree=awardTopThreePlacements(techSeqs,"owner");
   technology[0]+=techTopThree.vp[0];
   technology[1]+=techTopThree.vp[1];
@@ -353,7 +353,7 @@ function scoreGame(){
 
   const culture=[0,0];
   const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
-    .sort((a,b)=>b.length-a.length || b.high-a.high);
+    .sort((a,b)=>b.length-a.length || b.owner-a.owner);
   const cultureTopThree=awardTopThreePlacements(seqs,"owner");
   culture[0]+=cultureTopThree.vp[0];
   culture[1]+=cultureTopThree.vp[1];
