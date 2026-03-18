@@ -86,6 +86,7 @@ function buildTableau(age,deck){const model=TABLEAU_MODEL[age], rows=buildRows(m
 function accessibility(T){const {slots,coveredBy}=T; return slots.map((s,i)=>!s.removed && !(coveredBy[i]||[]).some(c=>!slots[c].removed));}
 function flipNew(slots,acc){for(let i=0;i<slots.length;i++) if(!slots[i].removed && slots[i].faceDown && acc[i]) slots[i].faceDown=false;}
 function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);}
+function foodPower(cards){return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);}
 function suitSequences(cards,suit){const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
 function breakthroughCount(cards){return suitSequences(cards,"H").length;}
 function diamondSequences(cards){return suitSequences(cards,"D");}
