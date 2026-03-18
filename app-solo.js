@@ -282,6 +282,16 @@ function scoreSoloCards(cards){
     }
   };
 }
+function sequencePlacementByPlayer(playersCards,suit){
+  const placements=[[],[]];
+  const labels=["1st","2nd","3rd"];
+  const ranked=[
+    ...suitSequences(playersCards[0],suit).map(s=>({...s,owner:0})),
+    ...suitSequences(playersCards[1],suit).map(s=>({...s,owner:1}))
+  ].sort((a,b)=>b.length-a.length || b.high-a.high);
+  for(let i=0;i<Math.min(3,ranked.length);i++) placements[ranked[i].owner].push(labels[i]);
+  return placements.map(p=>p.length?p.join(", "):"—");
+}
 function scoreGame(){
   return scoreSoloCards(G.players[0].cards);
 }
