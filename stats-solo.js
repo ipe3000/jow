@@ -1,11 +1,8 @@
 (function(){
 const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-const DIAMOND_VP_AWARDS=[6,3,1];
-const TOP_THREE_SWEEP_BONUS=3;
-const MILITARY_VP=2;
-const DEFAULT_SOLO_SUPREMACY_THRESHOLD=3;
-const CALAMITY_VP_PENALTY=-2;
-const SOLO_NON_HUMAN_PLAYER_INDEX=1;
+const RED_SEQUENCE_VP=2;
+const DEFAULT_SOLO_SUPREMACY_THRESHOLD=4;
+const DEFAULT_SOLO_WIN_THRESHOLD=10;
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
 const TABLEAU_MODEL={
@@ -30,22 +27,28 @@ const runBtn=document.getElementById("runBtn"), statusEl=document.getElementById
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const mcStrengthInput=document.getElementById("mcStrength");
 const supremacyThresholdInput=document.getElementById("supremacyThreshold");
+const winThresholdInput=document.getElementById("winThreshold");
 
 function parseIntOrDefault(v,d){const n=Number(v); return Number.isFinite(n)?Math.round(n):d;}
 function readMcStrength(){return clamp(parseIntOrDefault(mcStrengthInput.value,1),1,10);}
 function normalizeMcStrengthInput(){mcStrengthInput.value=String(readMcStrength());}
 function readSupremacyThreshold(){return clamp(parseIntOrDefault(supremacyThresholdInput.value,DEFAULT_SOLO_SUPREMACY_THRESHOLD),1,20);}
 function normalizeSupremacyThresholdInput(){supremacyThresholdInput.value=String(readSupremacyThreshold());}
+function readWinThreshold(){return clamp(parseIntOrDefault(winThresholdInput.value,DEFAULT_SOLO_WIN_THRESHOLD),1,40);}
+function normalizeWinThresholdInput(){winThresholdInput.value=String(readWinThreshold());}
 function setParamsFromQuery(){
  const params=new URLSearchParams(location.search);
  if(params.has("mcStrength")) mcStrengthInput.value=params.get("mcStrength");
  if(params.has("supremacyThreshold")) supremacyThresholdInput.value=params.get("supremacyThreshold");
+ if(params.has("winThreshold")) winThresholdInput.value=params.get("winThreshold");
  normalizeMcStrengthInput();
  normalizeSupremacyThresholdInput();
+ normalizeWinThresholdInput();
 }
 setParamsFromQuery();
 mcStrengthInput.addEventListener("change",normalizeMcStrengthInput);
 supremacyThresholdInput.addEventListener("change",normalizeSupremacyThresholdInput);
+winThresholdInput.addEventListener("change",normalizeWinThresholdInput);
 
 function mcSettings(level){
  const strength=clamp(parseIntOrDefault(level,1),1,10);
@@ -86,51 +89,19 @@ function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swor
 function suitSequences(cards,suit){const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
 function breakthroughCount(cards){return suitSequences(cards,"H").length;}
 function diamondSequences(cards){return suitSequences(cards,"D");}
-function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){if(!a&&!b)return rivalWinsTie?-1:0; if(!a)return -1; if(!b)return 1; if(a.length!==b.length)return a.length>b.length?1:-1; if(!ignoreHigh&&a.high!==b.high)return a.high>b.high?1:-1; return rivalWinsTie?-1:0;}
-function bestRedSuitSequence(cards){
- const best=suit=>{const seq=suitSequences(cards,suit); if(!seq.length) return null; return seq.slice().sort((x,y)=>y.length-x.length)[0];};
- const h=best("H"), d=best("D"), cmp=compareSequences(h,d,{ignoreHigh:true});
- return cmp>=0?h:d;
-}
-function winnerOnVpWithRedTieBreak(cardsA,cardsB,vpA,vpB){
- if(vpA!==vpB) return vpA>vpB?0:1;
- const redA=bestRedSuitSequence(cardsA), redB=bestRedSuitSequence(cardsB);
- const cmp=compareSequences(redA,redB,{ignoreHigh:true,rivalWinsTie:true});
- return cmp>0?0:1;
-}
-function foodPower(cards){return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);}
-function calamityPenalty(cards,applyPenalty=true){
- if(!applyPenalty) return 0;
- const kings=cards.filter(c=>c.rank==="K").length;
- return kings>=1?CALAMITY_VP_PENALTY:0;
-}
-function awardTopThreePlacements(seqs){
- const vp=[0,0], placements=[];
- for(let i=0;i<Math.min(DIAMOND_VP_AWARDS.length,seqs.length);i++){
-  const award=DIAMOND_VP_AWARDS[i], owner=seqs[i].o;
-  vp[owner]+=award;
-  placements.push({owner,vp:award,length:seqs[i].length});
- }
- let sweepBonusOwner=null;
- if(placements.length===3 && placements.every(p=>p.owner===placements[0].owner)){
-  sweepBonusOwner=placements[0].owner;
-  vp[sweepBonusOwner]+=TOP_THREE_SWEEP_BONUS;
- }
- return {vp,placements,sweepBonusOwner};
-}
-function scoreFromCards(a,b){
- const sw=[swords(a),swords(b)], foodPowerByPlayer=[foodPower(a),foodPower(b)]; let vp=[0,0], military=[0,0], food=[0,0];
- if(sw[0]>sw[1]) military=[MILITARY_VP,0]; else if(sw[1]>sw[0]) military=[0,MILITARY_VP];
- if(foodPowerByPlayer[0]>foodPowerByPlayer[1]) food=[MILITARY_VP,0]; else if(foodPowerByPlayer[1]>foodPowerByPlayer[0]) food=[0,MILITARY_VP];
- vp[0]+=military[0]+food[0]; vp[1]+=military[1]+food[1];
- const techSeqs=[...suitSequences(a,"H").map(s=>({...s,o:0})),...suitSequences(b,"H").map(s=>({...s,o:1}))].sort((x,y)=>(y.length-x.length)||(y.o-x.o));
- const techTopThree=awardTopThreePlacements(techSeqs);
- const tech=[...techTopThree.vp]; vp[0]+=tech[0]; vp[1]+=tech[1];
- const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>(y.length-x.length)||(y.o-x.o));
- const cultureTopThree=awardTopThreePlacements(seqs);
- const culture=[...cultureTopThree.vp]; vp[0]+=culture[0]; vp[1]+=culture[1];
- const calamity=[calamityPenalty(a,true),calamityPenalty(b,false)]; vp[0]+=calamity[0]; vp[1]+=calamity[1];
- return {vp,military,food,tech,culture,calamity,swords:sw,breakthrough:[breakthroughCount(a),breakthroughCount(b)]};
+function scoreSoloCards(cards){
+ const heartSequences=suitSequences(cards,"H").length;
+ const diamondSequencesCount=suitSequences(cards,"D").length;
+ const heartVp=heartSequences*RED_SEQUENCE_VP;
+ const diamondVp=diamondSequencesCount*RED_SEQUENCE_VP;
+ return {
+  vp:heartVp+diamondVp,
+  heartSequences,
+  diamondSequences:diamondSequencesCount,
+  heartVp,
+  diamondVp,
+  totalSequences:heartSequences+diamondSequencesCount
+ };
 }
 function swordValue(card){const v=RANK_VAL[card.rank]; return v<=9?1:2;}
 function bitOfRank(rank){ return 1<<(RANK_VAL[rank]-1); }
@@ -190,15 +161,14 @@ function rivalOptionsForOpening(S){
  return {options:lr,forced:lr.length===1,reason:"opening leftmost/rightmost"};
 }
 
-function stateValueForA(S,rewardMode="insta"){
+function stateValueForA(S,rewardMode="insta",winThreshold=DEFAULT_SOLO_WIN_THRESHOLD){
  if(S.winner!==undefined) return S.winner===0?1:0;
- const sc=scoreFromCards(S.players[0].cards,S.players[1].cards).vp;
+ const score=scoreSoloCards(S.players[0].cards);
  if(rewardMode==="scoring"){
-  const margin=sc[0]-sc[1];
-  return 0.5+0.5*Math.max(-1,Math.min(1,margin/20));
+  const progress=score.vp/Math.max(1,winThreshold);
+  return Math.max(0,Math.min(1,0.15+0.7*progress));
  }
- const w=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,sc[0],sc[1]);
- return w===0?1:0;
+ return score.vp>=winThreshold?1:0;
 }
 function chooseRivalIdxForA(S,options,rewardMode="insta"){
  if(!options.length) return null;
@@ -214,11 +184,12 @@ function cheapEvalTake(S,p,idx){
  let dTech=0; if(card.suit==="H"){const nm=(me.hMask|bitOfRank(card.rank))&MASK13; dTech=diamondAdjFromMask(nm)-me.hAdj;}
  let dDia=0; if(card.suit==="D"){const nm=(me.dMask|bitOfRank(card.rank))&MASK13; dDia=diamondAdjFromMask(nm)-me.dAdj;}
  const deny=(card.suit==="S"?0.24:0)+(card.suit==="C"?0.24:0)+(card.suit==="H"?0.14:0)+(card.suit==="D"?0.14:0);
- const pressure=Math.max(0,opp.sw-me.sw-5)*0.05 + Math.max(0,opp.cw-me.cw-5)*0.05;
- return dSw*1.25 + dFood*HEURISTIC_WEIGHT_FOOD + dTech*HEURISTIC_WEIGHT_TECH + dDia*HEURISTIC_WEIGHT_DIAMOND + deny + pressure;
+ const danger=Math.max(0,opp.sw+dSw-me.sw-(S.supremacyThreshold-1))*0.35 + Math.max(0,opp.cw+dFood-me.cw-(S.supremacyThreshold-1))*0.35;
+ const pressure=Math.max(0,opp.sw-me.sw-(S.supremacyThreshold-2))*0.16 + Math.max(0,opp.cw-me.cw-(S.supremacyThreshold-2))*0.16;
+ return dSw*1.1 + dFood*1.1 + dTech*1.4 + dDia*1.4 + deny + pressure + danger;
 }
 
-function cloneState(S){return {age:S.age,ended:S.ended,nextAgeFirst:S.nextAgeFirst,supremacyThreshold:S.supremacyThreshold,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
+function cloneState(S){return {age:S.age,ended:S.ended,nextAgeFirst:S.nextAgeFirst,supremacyThreshold:S.supremacyThreshold,winThreshold:S.winThreshold,players:S.players.map(p=>({cards:p.cards.slice(),joker:p.joker,feat:cloneFeat(p.feat)})),tableau:{slots:S.tableau.slots.map(s=>({...s})),coveredBy:S.tableau.coveredBy,coveredByRev:S.tableau.coveredByRev},decks:{ancient:S.decks.ancient.slice(),modern:S.decks.modern.slice()},events:{...S.events}};}
 
 function randomPlayout(S,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){
  let guard=600;
@@ -258,7 +229,7 @@ function randomPlayout(S,mcCfg=DEFAULT_MC_CFG,rewardMode="insta"){
    S.events.rivalForced+=rr.options.length<=1?1:0;
   }
  }
- return stateValueForA(S,rewardMode);
+ return stateValueForA(S,rewardMode,S.winThreshold);
 }
 function ucbSelect(stats,total,c=0.9){let bestIdx=null,best=-Infinity; for(const [idx,st] of stats.entries()){if(st.n===0) return idx; const mean=st.w/st.n; const ucb=mean+c*Math.sqrt(Math.log(total)/st.n); if(ucb>best){best=ucb;bestIdx=idx;}} return bestIdx;}
 function chooseMoveUcb(S,moves,mcCfg,{topK=4,rewardMode="insta",exploration=0.85,tBias=1}={}){
@@ -331,10 +302,10 @@ function maybeAdvanceAge(S){
  S.ended=true;
 }
 
-function simulateOne(startPlayer,strA,mcCfg,supremacyThreshold){
+function simulateOne(startPlayer,strA,mcCfg,supremacyThreshold,winThreshold){
  const {ancient,modern}=splitDeckForAges(makeDeck());
  const firstPlayer=startPlayer===1?1:0;
- const S={age:"ancient",nextAgeFirst:1-firstPlayer,ended:false,supremacyThreshold,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:false,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
+ const S={age:"ancient",nextAgeFirst:1-firstPlayer,ended:false,supremacyThreshold,winThreshold,decks:{ancient,modern},tableau:buildTableau("ancient",ancient),players:[{cards:[],joker:false,feat:makeFeat()},{cards:[],joker:false,feat:makeFeat()}],events:{rivalForced:0,rivalChoices:0}};
 
  if(firstPlayer===1){
   const openingRival=rivalOptionsForOpening(S);
@@ -379,21 +350,21 @@ function simulateOne(startPlayer,strA,mcCfg,supremacyThreshold){
   }
   maybeAdvanceAge(S);
  }
- const score=scoreFromCards(S.players[0].cards,S.players[1].cards);
- const vpA=score.vp[0], vpB=score.vp[1];
- const pointsWinner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,vpA,vpB);
- const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(pointsWinner===0?"a":"b");
- const winBy=S.winBy || "Points";
- return {vpA,vpB,margin:vpB-vpA,winner,winBy,score,events:S.events};
+ const score=scoreSoloCards(S.players[0].cards);
+ const vpA=score.vp;
+ const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA>=S.winThreshold?"a":"b");
+ const winBy=S.winBy || (vpA>=S.winThreshold?"Target VP":"Below target VP");
+ return {vpA,winner,winBy,score,events:S.events,winThreshold:S.winThreshold};
 }
 function renderRows(tbody,rows){tbody.innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td>${r[2]!==undefined?`<td>${r[2]}</td>`:""}</tr>`).join("");}
-function renderHistogram(margins){const buckets=new Map(); for(let x=-20;x<=20;x+=4) buckets.set(`${x}..${x+3}`,0); buckets.set("<=-21",0); buckets.set(">=21",0); for(const m of margins){if(m<=-21)buckets.set("<=-21",buckets.get("<=-21")+1); else if(m>=21)buckets.set(">=21",buckets.get(">=21")+1); else {const b=Math.floor((m+20)/4),s=-20+b*4,key=`${s}..${s+3}`; buckets.set(key,buckets.get(key)+1);}} const total=Math.max(1,margins.length),maxN=Math.max(1,...buckets.values()); document.getElementById("marginHist").innerHTML=[...buckets.entries()].map(([k,v])=>`<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${Math.round(100*v/maxN)}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`).join("");}
-async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getElementById("games").value)||1000)); const sA=document.getElementById("playerStrategy").value, sm=document.getElementById("startMode").value, mcCfg=mcSettings(readMcStrength()), supremacyThreshold=readSupremacyThreshold();
+function renderHistogram(values){const upper=Math.max(12,...values,readWinThreshold()+2),step=2,buckets=new Map(); for(let x=0;x<=upper;x+=step) buckets.set(`${x}..${x+step-1}`,0); const overflowKey=`>=${upper+1}`; buckets.set(overflowKey,0); for(const v of values){if(v>upper)buckets.set(overflowKey,buckets.get(overflowKey)+1); else {const start=Math.floor(Math.max(0,v)/step)*step,key=`${start}..${start+step-1}`; buckets.set(key,(buckets.get(key)||0)+1);}} const total=Math.max(1,values.length),maxN=Math.max(1,...buckets.values()); document.getElementById("marginHist").innerHTML=[...buckets.entries()].map(([k,v])=>`<div class="bar"><div>${k}</div><div class="track"><div class="fill" style="width:${Math.round(100*v/maxN)}%"></div></div><div>${(100*v/total).toFixed(1)}%</div></div>`).join("");}
+async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getElementById("games").value)||1000)); const sA=document.getElementById("playerStrategy").value, sm=document.getElementById("startMode").value, mcCfg=mcSettings(readMcStrength()), supremacyThreshold=readSupremacyThreshold(), winThreshold=readWinThreshold();
  normalizeSupremacyThresholdInput();
+ normalizeWinThresholdInput();
  runBtn.disabled=true; const out=[]; let lastUiTick=performance.now();
  for(let i=0;i<n;i++){
   const start=sm==="alternate"?(i%2):sm==="a"?0:1;
-  out.push(simulateOne(start,sA,mcCfg,supremacyThreshold));
+  out.push(simulateOne(start,sA,mcCfg,supremacyThreshold,winThreshold));
   const done=i+1;
   const now=performance.now();
   if(done===n || now-lastUiTick>=33){
@@ -403,15 +374,15 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
   }
  }
  const aWin=out.filter(x=>x.winner==="a").length,bWin=out.filter(x=>x.winner==="b").length,draw=out.length-aWin-bWin;
- const nonDraw=Math.max(1,aWin+bWin), pB=bWin/nonDraw, pA=aWin/nonDraw;
- const se=Math.sqrt(0.25/nonDraw), ci95=1.96*se, delta=pB-pA;
- const significance=Math.abs(delta)<=ci95?"Difference compatible with statistical variance":"Difference beyond the 95% band (verify with more games)";
- const pointsOnly=out.filter(x=>x.winBy==="Points");
+ const targetWins=out.filter(x=>x.winBy==="Target VP").length;
+ const underTargetLosses=out.filter(x=>x.winBy==="Below target VP").length;
+ const supremacyLosses=out.filter(x=>x.winBy.includes("Supremacy")).length;
+ const vpValues=out.map(x=>x.vpA);
  document.getElementById("kGames").textContent=String(out.length); document.getElementById("kAWin").textContent=pct(aWin,out.length); document.getElementById("kBWin").textContent=pct(bWin,out.length); document.getElementById("kDraw").textContent=pct(draw,out.length);
- const margins=out.map(x=>x.margin); renderHistogram(margins);
- renderRows(document.getElementById("scoreTable"),[["Average VP (points games)",avg(pointsOnly.map(x=>x.vpA)).toFixed(2),avg(pointsOnly.map(x=>x.vpB)).toFixed(2)],["Average VP (all games, incl. supremacy)",avg(out.map(x=>x.vpA)).toFixed(2),avg(out.map(x=>x.vpB)).toFixed(2)],["Median VP (points games)",median(pointsOnly.map(x=>x.vpA)),median(pointsOnly.map(x=>x.vpB))],["Average margin (B-A)",avg(margins).toFixed(2),"—"],["Supremacy wins",pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="a").length,out.length),pct(out.filter(x=>x.winBy.includes("Supremacy") && x.winner==="b").length,out.length)]]);
- renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Games decided on points",pct(pointsOnly.length,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks (random)",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"],["Win rate AI A/B (excluding draws)",`${fmtPct(pA)} / ${fmtPct(pB)}`],["Delta B-A and 95% band",`${fmtPct(delta)} (±${fmtPct(ci95)})`],["Statistical reading",significance]]);
- renderRows(document.getElementById("vpTable"),[["Military VP (♠)",avg(pointsOnly.map(x=>x.score.military[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.military[1])).toFixed(2)],["Food VP (♣)",avg(pointsOnly.map(x=>x.score.food[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.food[1])).toFixed(2)],["Technology VP (♥)",avg(pointsOnly.map(x=>x.score.tech[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.tech[1])).toFixed(2)],["Culture VP (♦)",avg(pointsOnly.map(x=>x.score.culture[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.culture[1])).toFixed(2)],["Calamity VP (A: 1+K, B: none)",avg(pointsOnly.map(x=>x.score.calamity[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.calamity[1])).toFixed(2)],["Average Swords",avg(pointsOnly.map(x=>x.score.swords[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.swords[1])).toFixed(2)],["Average Tech Sequences",avg(pointsOnly.map(x=>x.score.breakthrough[0])).toFixed(2),avg(pointsOnly.map(x=>x.score.breakthrough[1])).toFixed(2)]]);
+ renderHistogram(vpValues);
+ renderRows(document.getElementById("scoreTable"),[["Target VP",String(winThreshold)],["Average VP (all games)",avg(vpValues).toFixed(2)],["Median VP",median(vpValues)],["Average total red sequences",avg(out.map(x=>x.score.totalSequences)).toFixed(2)],["Average VP in target wins",avg(out.filter(x=>x.winner==="a").map(x=>x.vpA)).toFixed(2)]]);
+ renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Wins by reaching target",pct(targetWins,out.length)],["Losses below target",pct(underTargetLosses,out.length)],["All supremacy losses",pct(supremacyLosses,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"]]);
+ renderRows(document.getElementById("vpTable"),[["♥ sequences",avg(out.map(x=>x.score.heartSequences)).toFixed(2)],["♦ sequences",avg(out.map(x=>x.score.diamondSequences)).toFixed(2)],["♥ VP",avg(out.map(x=>x.score.heartVp)).toFixed(2)],["♦ VP",avg(out.map(x=>x.score.diamondVp)).toFixed(2)],["Total red-sequence VP",avg(vpValues).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
 statusEl.textContent="Ready. Solo-mode statistical core loaded.";
