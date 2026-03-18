@@ -1,8 +1,8 @@
 (function(){
 const SUITS=["S","D","H","C"]; const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-const RED_SEQUENCE_VP=2;
+const SOLO_SEQUENCE_VP_AWARDS=[1,3,6];
 const DEFAULT_SOLO_SUPREMACY_THRESHOLD=4;
-const DEFAULT_SOLO_WIN_THRESHOLD=10;
+const DEFAULT_SOLO_WIN_THRESHOLD=11;
 const RANK_VAL=Object.fromEntries(RANKS.map((r,i)=>[r,i+1]));
 const MASK13=(1<<13)-1;
 const TABLEAU_MODEL={
@@ -89,18 +89,29 @@ function swords(cards){return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swor
 function suitSequences(cards,suit){const owned=new Set(cards.filter(c=>c.suit===suit).map(c=>RANK_VAL[c.rank])); if(owned.size<2) return []; const present=i=>owned.has(i===0?13:i===14?1:i); if(owned.size===13) return [{length:13,high:13}]; const seq=[]; for(let i=1;i<=13;i++){if(!owned.has(i) || present(i-1)) continue; let len=1,cur=i; while(present(cur+1)){len++;cur=cur===13?1:cur+1;if(cur===i)break;} if(len>=2){let high=i; for(let k=0,cc=i;k<len;k++){if(cc===13) high=13; else if(high!==13 && cc>high) high=cc; cc=cc===13?1:cc+1;} seq.push({length:len,high});}} return seq;}
 function breakthroughCount(cards){return suitSequences(cards,"H").length;}
 function diamondSequences(cards){return suitSequences(cards,"D");}
+function sequenceVpBreakdown(cards,suit){
+ const count=suitSequences(cards,suit).length;
+ const awards=[];
+ let vp=0;
+ for(let i=0;i<Math.min(count,SOLO_SEQUENCE_VP_AWARDS.length);i++){
+  const award=SOLO_SEQUENCE_VP_AWARDS[i];
+  awards.push(award);
+  vp+=award;
+ }
+ return {count,awards,vp};
+}
 function scoreSoloCards(cards){
- const heartSequences=suitSequences(cards,"H").length;
- const diamondSequencesCount=suitSequences(cards,"D").length;
- const heartVp=heartSequences*RED_SEQUENCE_VP;
- const diamondVp=diamondSequencesCount*RED_SEQUENCE_VP;
+ const hearts=sequenceVpBreakdown(cards,"H");
+ const diamonds=sequenceVpBreakdown(cards,"D");
  return {
-  vp:heartVp+diamondVp,
-  heartSequences,
-  diamondSequences:diamondSequencesCount,
-  heartVp,
-  diamondVp,
-  totalSequences:heartSequences+diamondSequencesCount
+  vp:hearts.vp+diamonds.vp,
+  heartSequences:hearts.count,
+  diamondSequences:diamonds.count,
+  heartVp:hearts.vp,
+  diamondVp:diamonds.vp,
+  heartAwards:hearts.awards,
+  diamondAwards:diamonds.awards,
+  totalSequences:hearts.count+diamonds.count
  };
 }
 function swordValue(card){const v=RANK_VAL[card.rank]; return v<=9?1:2;}
@@ -161,14 +172,20 @@ function rivalOptionsForOpening(S){
  return {options:lr,forced:lr.length===1,reason:"opening leftmost/rightmost"};
 }
 
+function soloMcValue(score,winThreshold,rewardMode="insta"){
+ const normalizedVp=Math.max(0,Math.min(1,score.vp/Math.max(1,winThreshold)));
+ const perSuitPressure=Math.max(
+  score.heartSequences/Math.max(1,SOLO_SEQUENCE_VP_AWARDS.length),
+  score.diamondSequences/Math.max(1,SOLO_SEQUENCE_VP_AWARDS.length)
+ );
+ const sequencePressure=Math.max(0,Math.min(1,(score.totalSequences/6)*0.5 + perSuitPressure*0.5));
+ if(rewardMode==="scoring") return Math.max(normalizedVp,0.45*normalizedVp+0.55*sequencePressure);
+ return Math.max(normalizedVp,0.35*normalizedVp+0.65*sequencePressure);
+}
 function stateValueForA(S,rewardMode="insta",winThreshold=DEFAULT_SOLO_WIN_THRESHOLD){
  if(S.winner!==undefined) return S.winner===0?1:0;
  const score=scoreSoloCards(S.players[0].cards);
- if(rewardMode==="scoring"){
-  const progress=score.vp/Math.max(1,winThreshold);
-  return Math.max(0,Math.min(1,0.15+0.7*progress));
- }
- return score.vp>=winThreshold?1:0;
+ return soloMcValue(score,winThreshold,rewardMode);
 }
 function chooseRivalIdxForA(S,options,rewardMode="insta"){
  if(!options.length) return null;
