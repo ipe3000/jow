@@ -100,17 +100,31 @@ function sequenceVpBreakdown(cards,suit){
  }
  return {count,awards,vp};
 }
-function scoreSoloCards(cards){
- const hearts=sequenceVpBreakdown(cards,"H");
- const diamonds=sequenceVpBreakdown(cards,"D");
+function suitMajorityBonus(myCards,oppCards,suit){
+ const scorer=suit==="S"?swords:foodPower;
+ const myTotal=scorer(myCards);
+ const oppTotal=scorer(oppCards);
+ return {myTotal,oppTotal,vp:myTotal>oppTotal?2:0};
+}
+function scoreSoloCards(playerCards,opponentCards=[]){
+ const hearts=sequenceVpBreakdown(playerCards,"H");
+ const diamonds=sequenceVpBreakdown(playerCards,"D");
+ const spades=suitMajorityBonus(playerCards,opponentCards,"S");
+ const clubs=suitMajorityBonus(playerCards,opponentCards,"C");
  return {
-  vp:hearts.vp+diamonds.vp,
+  vp:hearts.vp+diamonds.vp+spades.vp+clubs.vp,
   heartSequences:hearts.count,
   diamondSequences:diamonds.count,
   heartVp:hearts.vp,
   diamondVp:diamonds.vp,
   heartAwards:hearts.awards,
   diamondAwards:diamonds.awards,
+  spadeVp:spades.vp,
+  clubVp:clubs.vp,
+  spadeTotal:spades.myTotal,
+  spadeOpponentTotal:spades.oppTotal,
+  clubTotal:clubs.myTotal,
+  clubOpponentTotal:clubs.oppTotal,
   totalSequences:hearts.count+diamonds.count
  };
 }
@@ -184,7 +198,7 @@ function soloMcValue(score,winThreshold,rewardMode="insta"){
 }
 function stateValueForA(S,rewardMode="insta",winThreshold=DEFAULT_SOLO_WIN_THRESHOLD){
  if(S.winner!==undefined) return S.winner===0?1:0;
- const score=scoreSoloCards(S.players[0].cards);
+ const score=scoreSoloCards(S.players[0].cards,S.players[1].cards);
  return soloMcValue(score,winThreshold,rewardMode);
 }
 function chooseRivalIdxForA(S,options,rewardMode="insta"){
@@ -367,7 +381,7 @@ function simulateOne(startPlayer,strA,mcCfg,supremacyThreshold,winThreshold){
   }
   maybeAdvanceAge(S);
  }
- const score=scoreSoloCards(S.players[0].cards);
+ const score=scoreSoloCards(S.players[0].cards,S.players[1].cards);
  const vpA=score.vp;
  const winner=S.winner!==undefined?(S.winner===0?"a":"b"):(vpA>=S.winThreshold?"a":"b");
  const winBy=S.winBy || (vpA>=S.winThreshold?"Target VP":"Below target VP");
@@ -399,7 +413,7 @@ async function runBatch(){const n=Math.max(1,Math.min(10000,Number(document.getE
  renderHistogram(vpValues);
  renderRows(document.getElementById("scoreTable"),[["Target VP",String(winThreshold)],["Average VP (all games)",avg(vpValues).toFixed(2)],["Median VP",median(vpValues)],["Average total red sequences",avg(out.map(x=>x.score.totalSequences)).toFixed(2)],["Average VP in target wins",avg(out.filter(x=>x.winner==="a").map(x=>x.vpA)).toFixed(2)]]);
  renderRows(document.getElementById("eventTable"),[["Military Supremacy",pct(out.filter(x=>x.winBy==="Military Supremacy").length,out.length)],["Food Supremacy",pct(out.filter(x=>x.winBy==="Food Supremacy").length,out.length)],["Wins by reaching target",pct(targetWins,out.length)],["Losses below target",pct(underTargetLosses,out.length)],["All supremacy losses",pct(supremacyLosses,out.length)],["Rival forced picks",avg(out.map(x=>x.events.rivalForced)).toFixed(2)+" / game"],["Rival non-forced picks",avg(out.map(x=>x.events.rivalChoices)).toFixed(2)+" / game"]]);
- renderRows(document.getElementById("vpTable"),[["♥ sequences",avg(out.map(x=>x.score.heartSequences)).toFixed(2)],["♦ sequences",avg(out.map(x=>x.score.diamondSequences)).toFixed(2)],["♥ VP",avg(out.map(x=>x.score.heartVp)).toFixed(2)],["♦ VP",avg(out.map(x=>x.score.diamondVp)).toFixed(2)],["Total red-sequence VP",avg(vpValues).toFixed(2)]]);
+ renderRows(document.getElementById("vpTable"),[["♥ sequences",avg(out.map(x=>x.score.heartSequences)).toFixed(2)],["♦ sequences",avg(out.map(x=>x.score.diamondSequences)).toFixed(2)],["♥ VP",avg(out.map(x=>x.score.heartVp)).toFixed(2)],["♦ VP",avg(out.map(x=>x.score.diamondVp)).toFixed(2)],["♠ majority VP",avg(out.map(x=>x.score.spadeVp)).toFixed(2)],["♣ majority VP",avg(out.map(x=>x.score.clubVp)).toFixed(2)],["Total VP",avg(vpValues).toFixed(2)]]);
  statusEl.textContent=`Completed: ${n} games.`; runBtn.disabled=false;}
 runBtn.addEventListener("click",runBatch);
 statusEl.textContent="Ready. Solo-mode statistical core loaded.";

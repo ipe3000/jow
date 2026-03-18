@@ -275,10 +275,21 @@ function sequenceVpBreakdown(cards,suit){
   }
   return {count,awards,vp};
 }
-function scoreSoloCards(cards){
-  const hearts=sequenceVpBreakdown(cards,"H");
-  const diamonds=sequenceVpBreakdown(cards,"D");
-  const vp=hearts.vp+diamonds.vp;
+function suitMajorityBonus(myCards,oppCards,suit){
+  const myTotal=(suit==="S"?swords:foodPower)(myCards);
+  const oppTotal=(suit==="S"?swords:foodPower)(oppCards);
+  return {
+    myTotal,
+    oppTotal,
+    vp:myTotal>oppTotal?2:0
+  };
+}
+function scoreSoloCards(playerCards,opponentCards=[]){
+  const hearts=sequenceVpBreakdown(playerCards,"H");
+  const diamonds=sequenceVpBreakdown(playerCards,"D");
+  const spades=suitMajorityBonus(playerCards,opponentCards,"S");
+  const clubs=suitMajorityBonus(playerCards,opponentCards,"C");
+  const vp=hearts.vp+diamonds.vp+spades.vp+clubs.vp;
   return {
     vp,
     detail:{
@@ -288,6 +299,12 @@ function scoreSoloCards(cards){
       diamondVp:diamonds.vp,
       heartAwards:hearts.awards,
       diamondAwards:diamonds.awards,
+      spadeVp:spades.vp,
+      clubVp:clubs.vp,
+      spadeTotal:spades.myTotal,
+      spadeOpponentTotal:spades.oppTotal,
+      clubTotal:clubs.myTotal,
+      clubOpponentTotal:clubs.oppTotal,
       totalSequences:hearts.count+diamonds.count
     }
   };
@@ -303,7 +320,7 @@ function sequencePlacementByPlayer(playersCards,suit){
   return placements.map(p=>p.length?p.join(", "):"—");
 }
 function scoreGame(){
-  return scoreSoloCards(G.players[0].cards);
+  return scoreSoloCards(G.players[0].cards,G.players[1].cards);
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
@@ -538,13 +555,15 @@ function showEndgameModal(sc,winner){
         <tr><td>♥ Sequences</td><td><strong>${sc.detail.hearts}</strong> (${sc.detail.heartVp} VP${sc.detail.heartAwards.length?`: ${sc.detail.heartAwards.join(' + ')}`:''})</td></tr>
         <tr><td>♦ Sequences</td><td><strong>${sc.detail.diamonds}</strong> (${sc.detail.diamondVp} VP${sc.detail.diamondAwards.length?`: ${sc.detail.diamondAwards.join(' + ')}`:''})</td></tr>
         <tr><td>Total red sequences</td><td><strong>${sc.detail.totalSequences}</strong></td></tr>
+        <tr><td>♠ Majority</td><td><strong>${sc.detail.spadeVp} VP</strong> (${sc.detail.spadeTotal} vs ${sc.detail.spadeOpponentTotal})</td></tr>
+        <tr><td>♣ Majority</td><td><strong>${sc.detail.clubVp} VP</strong> (${sc.detail.clubTotal} vs ${sc.detail.clubOpponentTotal})</td></tr>
       </tbody>
       <tfoot>
         <tr class='tot'><td>Total VP</td><td><strong>${sc.vp}</strong></td></tr>
         <tr class='tot'><td>Target VP</td><td><strong>${SOLO_WIN_THRESHOLD}</strong></td></tr>
       </tfoot>
     </table>
-    <p style='color:var(--muted);margin-top:8px'>For each suit separately, maximal sequences of at least 2 cards score 1 VP for the 1st sequence, 3 VP for the 2nd, and 6 VP for the 3rd.</p>
+    <p style='color:var(--muted);margin-top:8px'>For each red suit separately, maximal sequences of at least 2 cards score 1 VP for the 1st sequence, 3 VP for the 2nd, and 6 VP for the 3rd. At end of game, the player with the higher ♠ total gets 2 VP and the player with the higher ♣ total gets 2 VP.</p>
     <div class='winnerBanner'>🏆 ${G.players[winner].name} wins${targetMet?" by reaching the target":""}</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -854,7 +873,7 @@ function soloMcValue(score,winThreshold){
 }
 function rewardForState(S,aiPlayer=1){
   if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
-  const score=scoreSoloCards(S.players[0].cards);
+  const score=scoreSoloCards(S.players[0].cards,S.players[1].cards);
   const playerValue=soloMcValue(score,SOLO_WIN_THRESHOLD);
   return aiPlayer===0 ? playerValue : 1-playerValue;
 }
@@ -1062,7 +1081,7 @@ function chooseActionWithOptionalJoker(){
 }
 function scoreFor(S,i){
   if(i!==0) return 0;
-  return scoreSoloCards(S.players[0].cards).vp;
+  return scoreSoloCards(S.players[0].cards,S.players[1].cards).vp;
 }
 
 function maybeRunAiTurn(){
@@ -1094,7 +1113,7 @@ async function endTurnOrAge(){
     G.ended=true;
     const sc=scoreGame();
     const w=sc.vp>=SOLO_WIN_THRESHOLD?0:1;
-    log(`Game over. ${G.players[0].name} scored ${sc.vp} VP from ${sc.detail.totalSequences} red sequences. Target: ${SOLO_WIN_THRESHOLD} VP.`);
+    log(`Game over. ${G.players[0].name} scored ${sc.vp} VP from ${sc.detail.totalSequences} red sequences plus black-suit majority bonuses. Target: ${SOLO_WIN_THRESHOLD} VP.`);
     log(`🏆 ${G.players[w].name} wins ${w===0?"by reaching the solo target":"because the solo target was not reached"}.`);
     showEndgameModal(sc,w);
     render(); return;
