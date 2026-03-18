@@ -1,7 +1,7 @@
 const SUITS=["S","D","H","C"];
-const RED_SEQUENCE_VP=2;
+const SOLO_SEQUENCE_VP_AWARDS=[1,3,6];
 const SOLO_SUPREMACY_THRESHOLD=4;
-const SOLO_WIN_THRESHOLD=10;
+const SOLO_WIN_THRESHOLD=11;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
@@ -264,21 +264,31 @@ function suitSequences(cards,suit){
   return seq;
 }
 
-function countSoloRedSequences(cards,suit){
-  return suitSequences(cards,suit).length;
+function sequenceVpBreakdown(cards,suit){
+  const count=suitSequences(cards,suit).length;
+  const awards=[];
+  let vp=0;
+  for(let i=0;i<Math.min(count,SOLO_SEQUENCE_VP_AWARDS.length);i++){
+    const award=SOLO_SEQUENCE_VP_AWARDS[i];
+    awards.push(award);
+    vp+=award;
+  }
+  return {count,awards,vp};
 }
 function scoreSoloCards(cards){
-  const hearts=countSoloRedSequences(cards,"H");
-  const diamonds=countSoloRedSequences(cards,"D");
-  const vp=RED_SEQUENCE_VP*(hearts+diamonds);
+  const hearts=sequenceVpBreakdown(cards,"H");
+  const diamonds=sequenceVpBreakdown(cards,"D");
+  const vp=hearts.vp+diamonds.vp;
   return {
     vp,
     detail:{
-      hearts,
-      diamonds,
-      heartVp:hearts*RED_SEQUENCE_VP,
-      diamondVp:diamonds*RED_SEQUENCE_VP,
-      totalSequences:hearts+diamonds
+      hearts:hearts.count,
+      diamonds:diamonds.count,
+      heartVp:hearts.vp,
+      diamondVp:diamonds.vp,
+      heartAwards:hearts.awards,
+      diamondAwards:diamonds.awards,
+      totalSequences:hearts.count+diamonds.count
     }
   };
 }
@@ -525,8 +535,8 @@ function showEndgameModal(sc,winner){
         <tr><th>Category</th><th>You</th></tr>
       </thead>
       <tbody>
-        <tr><td>♥ Sequences</td><td><strong>${sc.detail.hearts}</strong> (${sc.detail.heartVp} VP)</td></tr>
-        <tr><td>♦ Sequences</td><td><strong>${sc.detail.diamonds}</strong> (${sc.detail.diamondVp} VP)</td></tr>
+        <tr><td>♥ Sequences</td><td><strong>${sc.detail.hearts}</strong> (${sc.detail.heartVp} VP${sc.detail.heartAwards.length?`: ${sc.detail.heartAwards.join(' + ')}`:''})</td></tr>
+        <tr><td>♦ Sequences</td><td><strong>${sc.detail.diamonds}</strong> (${sc.detail.diamondVp} VP${sc.detail.diamondAwards.length?`: ${sc.detail.diamondAwards.join(' + ')}`:''})</td></tr>
         <tr><td>Total red sequences</td><td><strong>${sc.detail.totalSequences}</strong></td></tr>
       </tbody>
       <tfoot>
@@ -534,7 +544,7 @@ function showEndgameModal(sc,winner){
         <tr class='tot'><td>Target VP</td><td><strong>${SOLO_WIN_THRESHOLD}</strong></td></tr>
       </tfoot>
     </table>
-    <p style='color:var(--muted);margin-top:8px'>Each maximal ♥/♦ sequence of at least 2 cards is worth ${RED_SEQUENCE_VP} VP.</p>
+    <p style='color:var(--muted);margin-top:8px'>For each suit separately, maximal sequences of at least 2 cards score 1 VP for the 1st sequence, 3 VP for the 2nd, and 6 VP for the 3rd.</p>
     <div class='winnerBanner'>🏆 ${G.players[winner].name} wins${targetMet?" by reaching the target":""}</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
@@ -833,10 +843,20 @@ function applyTakeSim(S,idx){
   if(S.tableau.slots.every(s=>s.removed)) advanceAgeSim(S);
   else if(S.picksLeftThisTurn<=0){S.picksLeftThisTurn=1; S.current=1-S.current;}
 }
+function soloMcValue(score,winThreshold){
+  const normalizedVp=Math.max(0,Math.min(1,score.vp/Math.max(1,winThreshold)));
+  const perSuitPressure=Math.max(
+    score.detail.hearts/Math.max(1,SOLO_SEQUENCE_VP_AWARDS.length),
+    score.detail.diamonds/Math.max(1,SOLO_SEQUENCE_VP_AWARDS.length)
+  );
+  const sequencePressure=Math.max(0,Math.min(1,(score.detail.totalSequences/6)*0.5 + perSuitPressure*0.5));
+  return Math.max(normalizedVp,0.35*normalizedVp+0.65*sequencePressure);
+}
 function rewardForState(S,aiPlayer=1){
   if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
-  const playerVp=scoreFor(S,0);
-  return playerVp>=SOLO_WIN_THRESHOLD ? (aiPlayer===0?1:0) : (aiPlayer===1?1:0);
+  const score=scoreSoloCards(S.players[0].cards);
+  const playerValue=soloMcValue(score,SOLO_WIN_THRESHOLD);
+  return aiPlayer===0 ? playerValue : 1-playerValue;
 }
 function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
   const S=cloneState(baseState);
