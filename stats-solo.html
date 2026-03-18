@@ -24,13 +24,14 @@
   <div class="app">
     <aside class="panel">
       <h1>Jow — Solo Stats Lab</h1>
-      <p class="small">Monte Carlo simulator for solo-mode rules. AI B is deterministic; AI A chooses both its own turn and any non-forced rival choice to maximize AI A outcome.</p>
+      <p class="small">Monte Carlo simulator for the solo target-based rules. AI B is deterministic; AI A chooses both its own turn and any non-forced rival choice to maximize AI A outcome while avoiding black-suit supremacy.</p>
       <div class="controls">
         <label>Number of games <input id="games" type="number" min="1" max="10000" value="1000" /></label>
         <label>AI A strategy <select id="playerStrategy"><option value="random">Random</option><option value="greedy">Greedy</option><option value="mc" selected>Monte Carlo</option><option value="mc_insta_win">Monte Carlo Insta-Win-focused</option><option value="mc_scoring">Monte Carlo Scoring-focused</option></select></label>
         <label>AI B behavior <input type="text" value="Deterministic solo rules" disabled /></label>
         <label>Monte Carlo AI strength (1-10) <input id="mcStrength" type="number" min="1" max="10" step="1" value="1" /></label>
-        <label>Soglia supremazia immediata AI B (♠/♣) <input id="supremacyThreshold" type="number" min="1" max="20" step="1" value="3" /></label>
+        <label>Soglia supremazia immediata AI B (♠/♣) <input id="supremacyThreshold" type="number" min="1" max="20" step="1" value="4" /></label>
+        <label>Soglia vittoria AI A (VP) <input id="winThreshold" type="number" min="1" max="40" step="1" value="10" /></label>
         <label>Starting player <select id="startMode"><option value="a">AI A</option><option value="b">AI B</option><option value="alternate" selected>Alternate</option></select></label>
         <button id="runBtn">Run simulation</button>
         <div id="status" class="small">Ready.</div>
@@ -46,13 +47,13 @@
       </div>
 
       <div class="grid">
-        <section class="card"><h3>Score summary</h3><table><thead><tr><th>Metric</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="scoreTable"></tbody></table></section>
-        <section class="card"><h3>VP margin distribution (AI B det. - AI A)</h3><div id="marginHist" class="hist"></div></section>
+        <section class="card"><h3>Score summary</h3><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody id="scoreTable"></tbody></table></section>
+        <section class="card"><h3>Final VP distribution (AI A)</h3><div id="marginHist" class="hist"></div></section>
       </div>
 
       <div class="grid" style="margin-top:10px;">
         <section class="card"><h3>Victory conditions</h3><table><thead><tr><th>Event</th><th>Frequency</th></tr></thead><tbody id="eventTable"></tbody></table></section>
-        <section class="card"><h3>Average VP breakdown (Solo rules)</h3><table><thead><tr><th>Category</th><th>AI A</th><th>AI B</th></tr></thead><tbody id="vpTable"></tbody></table></section>
+        <section class="card"><h3>Average red-sequence breakdown</h3><table><thead><tr><th>Category</th><th>AI A</th></tr></thead><tbody id="vpTable"></tbody></table></section>
       </div>
     </main>
   </div>

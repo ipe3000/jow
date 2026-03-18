@@ -1,10 +1,7 @@
 const SUITS=["S","D","H","C"];
-const DIAMOND_VP_AWARDS=[6,3,1];
-const TOP_THREE_SWEEP_BONUS=3;
-const MILITARY_VP=2;
-const HUMAN_KING_PENALTY_MIN_KINGS=1;
-const CALAMITY_VP_PENALTY=-2;
-const SOLO_SUPREMACY_THRESHOLD=3;
+const RED_SEQUENCE_VP=2;
+const SOLO_SUPREMACY_THRESHOLD=4;
+const SOLO_WIN_THRESHOLD=10;
 const SUIT_NAME={S:"♠",D:"♦",H:"♥",C:"♣"};
 const SUIT_ICON={S:"♠",D:"♦",H:"♥",C:"♣"};
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
@@ -231,11 +228,6 @@ function swordValue(card){
 function foodPower(cards){
   return cards.filter(c=>c.suit==="C").reduce((a,c)=>a+swordValue(c),0);
 }
-function calamityPenalty(cards,applyPenalty=true){
-  if(!applyPenalty) return 0;
-  const kings=cards.filter(c=>c.rank==="K").length;
-  return kings>=HUMAN_KING_PENALTY_MIN_KINGS?CALAMITY_VP_PENALTY:0;
-}
 function updateFeat(feat,card){
   if(card.suit==="S") feat.sw+=swordValue(card);
   if(card.suit==="C") feat.cw+=swordValue(card);
@@ -250,13 +242,6 @@ function updateFeat(feat,card){
 }
 function swords(cards){
   return cards.filter(c=>c.suit==="S").reduce((a,c)=>a+swordValue(c),0);
-}
-function suitLeadVP(my,opp){
-  if(my>opp) return MILITARY_VP;
-  return 0;
-}
-function breakthroughCount(cards){
-  return suitSequences(cards,"H").length;
 }
 
 function suitSequences(cards,suit){
@@ -279,106 +264,26 @@ function suitSequences(cards,suit){
   return seq;
 }
 
-function diamondSequences(cards){
-  return suitSequences(cards,"D");
+function countSoloRedSequences(cards,suit){
+  return suitSequences(cards,suit).length;
 }
-function compareSequences(a,b,{ignoreHigh=false,rivalWinsTie=false}={}){
-  if(!a && !b) return rivalWinsTie?-1:0;
-  if(!a) return -1;
-  if(!b) return 1;
-  if(a.length!==b.length) return a.length>b.length?1:-1;
-  if(!ignoreHigh && a.high!==b.high) return a.high>b.high?1:-1;
-  return rivalWinsTie?-1:0;
-}
-function bestRedSuitSequence(cards){
-  const best=suit=>{
-    const seq=suitSequences(cards,suit);
-    if(!seq.length) return null;
-    return seq.slice().sort((a,b)=>b.length-a.length)[0];
-  };
-  const bestHeart=best("H");
-  const bestDiamond=best("D");
-  const cmp=compareSequences(bestHeart,bestDiamond,{ignoreHigh:true});
-  return cmp>=0?bestHeart:bestDiamond;
-}
-function winnerOnVpWithRedTieBreak(cards0,cards1,vp0,vp1){
-  if(vp0!==vp1) return vp0>vp1?0:1;
-  const red0=bestRedSuitSequence(cards0);
-  const red1=bestRedSuitSequence(cards1);
-  const cmp=compareSequences(red0,red1,{ignoreHigh:true,rivalWinsTie:true});
-  return cmp>0?0:1;
-}
-function awardTopThreePlacements(seqs,ownerKey="owner"){
-  const vp=[0,0];
-  const placements=[];
-  for(let i=0;i<Math.min(DIAMOND_VP_AWARDS.length,seqs.length);i++){
-    const award=DIAMOND_VP_AWARDS[i];
-    const owner=seqs[i][ownerKey];
-    vp[owner]+=award;
-    placements.push({owner,vp:award,length:seqs[i].length});
-  }
-  let sweepBonusOwner=null;
-  if(placements.length===3 && placements.every(p=>p.owner===placements[0].owner)){
-    sweepBonusOwner=placements[0].owner;
-    vp[sweepBonusOwner]+=TOP_THREE_SWEEP_BONUS;
-  }
-  return {vp,placements,sweepBonusOwner};
-}
-function sequencePlacementByPlayer(playersCards,suit){
-  const placements=[[],[]];
-  const labels=["1st","2nd","3rd"];
-  const ranked=[
-    ...suitSequences(playersCards[0],suit).map(s=>({...s,owner:0})),
-    ...suitSequences(playersCards[1],suit).map(s=>({...s,owner:1}))
-  ].sort((a,b)=>b.length-a.length || b.high-a.high);
-  for(let i=0;i<Math.min(3,ranked.length);i++) placements[ranked[i].owner].push(labels[i]);
-  return placements.map(p=>p.length?p.join(", "):"—");
-}
-function scoreGame(){
-  const p0=G.players[0].cards,p1=G.players[SOLO_NON_HUMAN_PLAYER_INDEX].cards;
-  const s0=swords(p0),s1=swords(p1);
-  const c0=foodPower(p0),c1=foodPower(p1);
-  const military=[0,0];
-  if(s0>s1) military[0]=MILITARY_VP; else if(s1>s0) military[1]=MILITARY_VP;
-  const food=[0,0];
-  if(c0>c1) food[0]=MILITARY_VP; else if(c1>c0) food[1]=MILITARY_VP;
-
-  const technology=[0,0];
-  const techSeqs=[...suitSequences(p0,"H").map(s=>({...s,owner:0})),...suitSequences(p1,"H").map(s=>({...s,owner:1}))]
-    .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const techTopThree=awardTopThreePlacements(techSeqs,"owner");
-  technology[0]+=techTopThree.vp[0];
-  technology[1]+=techTopThree.vp[1];
-  const techAwards=techTopThree.placements;
-
-  const culture=[0,0];
-  const seqs=[...diamondSequences(p0).map(s=>({...s,owner:0})),...diamondSequences(p1).map(s=>({...s,owner:1}))]
-    .sort((a,b)=>b.length-a.length || b.high-a.high);
-  const cultureTopThree=awardTopThreePlacements(seqs,"owner");
-  culture[0]+=cultureTopThree.vp[0];
-  culture[1]+=cultureTopThree.vp[1];
-  const cultureAwards=cultureTopThree.placements;
-
-  const calamity=[calamityPenalty(p0,true),calamityPenalty(p1,false)];
-  const vp0=military[0]+food[0]+technology[0]+culture[0]+calamity[0];
-  const vp1=military[1]+food[1]+technology[1]+culture[1]+calamity[1];
-
+function scoreSoloCards(cards){
+  const hearts=countSoloRedSequences(cards,"H");
+  const diamonds=countSoloRedSequences(cards,"D");
+  const vp=RED_SEQUENCE_VP*(hearts+diamonds);
   return {
-    vp:[vp0,vp1],
+    vp,
     detail:{
-      swords:[s0,s1],
-      foods:[c0,c1],
-      military,
-      food,
-      tech:technology,
-      techAwards,
-      techSweepBonusOwner:techTopThree.sweepBonusOwner,
-      culture,
-      cultureAwards,
-      cultureSweepBonusOwner:cultureTopThree.sweepBonusOwner,
-      calamity
+      hearts,
+      diamonds,
+      heartVp:hearts*RED_SEQUENCE_VP,
+      diamondVp:diamonds*RED_SEQUENCE_VP,
+      totalSequences:hearts+diamonds
     }
   };
+}
+function scoreGame(){
+  return scoreSoloCards(G.players[0].cards);
 }
 function checkSupremacy(){
   const f0=G.players[0].feat, f1=G.players[1].feat;
@@ -601,44 +506,26 @@ function useJokerDouble(player=G.current){
 function showEndgameModal(sc,winner){
   const d=document.getElementById("modal");
   d.classList.remove("modernSwapModal");
-  const p0=G.players[0].name, p1=G.players[1].name;
-  const rows=[
-    {label:"♠",a:sc.detail.military[0],b:sc.detail.military[1]},
-    {label:"♣",a:sc.detail.food[0],b:sc.detail.food[1]},
-    {label:"♥",a:sc.detail.tech[0],b:sc.detail.tech[1]},
-    {label:"♦",a:sc.detail.culture[0],b:sc.detail.culture[1]},
-    {label:"Kings",a:sc.detail.calamity[0],b:sc.detail.calamity[1]}
-  ];
-  const cultureText=sc.detail.cultureAwards.length
-    ? sc.detail.cultureAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
-    : "No ♦ bonus assigned.";
-  const technologyText=sc.detail.techAwards.length
-    ? sc.detail.techAwards.map((x,i)=>`${i+1}° ${x.vp} VP → ${G.players[x.owner].name} (sequence ${x.length})`).join("<br>")
-    : "No ♥ bonus assigned.";
-  const technologySweepText=sc.detail.techSweepBonusOwner===null
-    ? ""
-    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.techSweepBonusOwner].name} (1st, 2nd, 3rd in ♥)`;
-  const cultureSweepText=sc.detail.cultureSweepBonusOwner===null
-    ? ""
-    : `<br>Sweep bonus +${TOP_THREE_SWEEP_BONUS} VP → ${G.players[sc.detail.cultureSweepBonusOwner].name} (1st, 2nd, 3rd in ♦)`;
+  const targetMet=sc.vp>=SOLO_WIN_THRESHOLD;
   d.innerHTML=`
     <h3>Game Over</h3>
-    <p>Victory points summary (Solo rules):</p>
+    <p>Solo target score summary:</p>
     <table class='endSummary'>
       <thead>
-        <tr><th></th><th>You</th><th>AI</th></tr>
+        <tr><th>Category</th><th>You</th></tr>
       </thead>
       <tbody>
-        ${rows.map(r=>`<tr><td>${r.label}</td><td><strong>${r.a}</strong></td><td><strong>${r.b}</strong></td></tr>`).join("")}
+        <tr><td>♥ Sequences</td><td><strong>${sc.detail.hearts}</strong> (${sc.detail.heartVp} VP)</td></tr>
+        <tr><td>♦ Sequences</td><td><strong>${sc.detail.diamonds}</strong> (${sc.detail.diamondVp} VP)</td></tr>
+        <tr><td>Total red sequences</td><td><strong>${sc.detail.totalSequences}</strong></td></tr>
       </tbody>
       <tfoot>
-        <tr class='tot'><td>Total VP</td><td><strong>${sc.vp[0]}</strong></td><td><strong>${sc.vp[1]}</strong></td></tr>
+        <tr class='tot'><td>Total VP</td><td><strong>${sc.vp}</strong></td></tr>
+        <tr class='tot'><td>Target VP</td><td><strong>${SOLO_WIN_THRESHOLD}</strong></td></tr>
       </tfoot>
     </table>
-    <p><strong>${p0}</strong> vs <strong>${p1}</strong></p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus ♥: ${technologyText}${technologySweepText}</p>
-    <p style='color:var(--muted);margin-top:8px'>Bonus ♦: ${cultureText}${cultureSweepText}</p>
-    <div class='winnerBanner'>🏆 ${G.players[winner].name} wins</div>
+    <p style='color:var(--muted);margin-top:8px'>Each maximal ♥/♦ sequence of at least 2 cards is worth ${RED_SEQUENCE_VP} VP.</p>
+    <div class='winnerBanner'>🏆 ${G.players[winner].name} wins${targetMet?" by reaching the target":""}</div>
     <div class='optRow'><button id='closeEnd'>Close</button></div>
   `;
   d.querySelector("#closeEnd").onclick=()=>d.close();
@@ -938,11 +825,8 @@ function applyTakeSim(S,idx){
 }
 function rewardForState(S,aiPlayer=1){
   if(S.winner!==undefined) return S.winner===aiPlayer?1:0;
-  const vp0=scoreFor(S,0);
-  const vp1=scoreFor(S,1);
-  const winner=winnerOnVpWithRedTieBreak(S.players[0].cards,S.players[1].cards,vp0,vp1);
-  if(winner===null) return 0.5;
-  return winner===aiPlayer?1:0;
+  const playerVp=scoreFor(S,0);
+  return playerVp>=SOLO_WIN_THRESHOLD ? (aiPlayer===0?1:0) : (aiPlayer===1?1:0);
 }
 function simulateFromMoveState(baseState,firstIdx,aiPlayer=1){
   const S=cloneState(baseState);
@@ -1147,22 +1031,8 @@ function chooseActionWithOptionalJoker(){
   return {useJoker:false,firstIdx:noJ.idx};
 }
 function scoreFor(S,i){
-  const a=S.players[0].cards,b=S.players[1].cards;
-  const sw=[swords(a),swords(b)], food=[foodPower(a),foodPower(b)];
-  let vp=[0,0];
-  if(sw[0]>sw[1]) vp[0]+=MILITARY_VP; else if(sw[1]>sw[0]) vp[1]+=MILITARY_VP;
-  if(food[0]>food[1]) vp[0]+=MILITARY_VP; else if(food[1]>food[0]) vp[1]+=MILITARY_VP;
-  const techSeqs=[...suitSequences(a,"H").map(s=>({...s,o:0})),...suitSequences(b,"H").map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  const techTopThree=awardTopThreePlacements(techSeqs,"o");
-  vp[0]+=techTopThree.vp[0];
-  vp[1]+=techTopThree.vp[1];
-  const seqs=[...diamondSequences(a).map(s=>({...s,o:0})),...diamondSequences(b).map(s=>({...s,o:1}))].sort((x,y)=>y.length-x.length||y.high-x.high);
-  const cultureTopThree=awardTopThreePlacements(seqs,"o");
-  vp[0]+=cultureTopThree.vp[0];
-  vp[1]+=cultureTopThree.vp[1];
-  vp[0]+=calamityPenalty(a,true);
-  vp[1]+=calamityPenalty(b,false);
-  return vp[i];
+  if(i!==0) return 0;
+  return scoreSoloCards(S.players[0].cards).vp;
 }
 
 function maybeRunAiTurn(){
@@ -1193,9 +1063,9 @@ async function endTurnOrAge(){
     }
     G.ended=true;
     const sc=scoreGame();
-    const w=winnerOnVpWithRedTieBreak(G.players[0].cards,G.players[1].cards,sc.vp[0],sc.vp[1]);
-    log(`Game over. VP: ${G.players[0].name} ${sc.vp[0]} - ${G.players[1].name} ${sc.vp[1]}.`);
-    log(`🏆 ${G.players[w].name} wins on points (solo tie-break rules applied).`);
+    const w=sc.vp>=SOLO_WIN_THRESHOLD?0:1;
+    log(`Game over. ${G.players[0].name} scored ${sc.vp} VP from ${sc.detail.totalSequences} red sequences. Target: ${SOLO_WIN_THRESHOLD} VP.`);
+    log(`🏆 ${G.players[w].name} wins ${w===0?"by reaching the solo target":"because the solo target was not reached"}.`);
     showEndgameModal(sc,w);
     render(); return;
   }
