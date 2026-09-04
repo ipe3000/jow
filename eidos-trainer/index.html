@@ -208,28 +208,45 @@
     const answer = document.getElementById("answer");
     const nextButton = document.getElementById("nextButton");
 
-    let currentBlock = 0;
-    let currentItem = 0;
     let showingAnswer = false;
+    let deck = [];
+    let deckIndex = 0;
     let previousKey = null;
 
-    function randomIndex(max) {
-      return Math.floor(Math.random() * max);
+    function shuffle(items) {
+      for (let i = items.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
     }
 
-    function generatePair() {
-      let block;
-      let item;
-      let key;
+    function buildDeck() {
+      const nextDeck = [];
 
-      do {
-        block = randomIndex(4);
-        item = randomIndex(5);
-        key = `${block}-${item}`;
-      } while (key === previousKey);
+      for (let block = 0; block < 4; block += 1) {
+        for (let item = 0; item < 5; item += 1) {
+          nextDeck.push({ block, item, key: `${block}-${item}` });
+        }
+      }
 
-      currentBlock = block;
-      currentItem = item;
+      shuffle(nextDeck);
+
+      if (previousKey !== null && nextDeck[0].key === previousKey) {
+        [nextDeck[0], nextDeck[1]] = [nextDeck[1], nextDeck[0]];
+      }
+
+      deck = nextDeck;
+      deckIndex = 0;
+    }
+
+    function drawPair() {
+      if (deckIndex >= deck.length) {
+        buildDeck();
+      }
+
+      const { block, item, key } = deck[deckIndex];
+      deckIndex += 1;
       previousKey = key;
       showingAnswer = false;
 
@@ -246,7 +263,7 @@
         answer.classList.remove("hidden");
         nextButton.textContent = "Avanti";
       } else {
-        generatePair();
+        drawPair();
       }
     }
 
@@ -259,7 +276,8 @@
       }
     });
 
-    generatePair();
+    buildDeck();
+    drawPair();
   </script>
 </body>
 </html>
