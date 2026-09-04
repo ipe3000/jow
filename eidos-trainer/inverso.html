@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111111" />
+  <title>EIDOS Trainer Inverso</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f4f1;
+      --card: #ffffff;
+      --text: #111111;
+      --muted: #6b6b65;
+      --border: #d8d8d2;
+      --button: #111111;
+      --button-text: #ffffff;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #10100f;
+        --card: #191918;
+        --text: #f5f5f2;
+        --muted: #aaa9a2;
+        --border: #343431;
+        --button: #f5f5f2;
+        --button-text: #111111;
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main { width: min(100%, 620px); }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0 0 28px;
+      text-align: center;
+      font-size: clamp(2rem, 7vw, 3.6rem);
+      line-height: 0.95;
+      letter-spacing: -0.045em;
+    }
+
+    .card {
+      min-height: 380px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 28px;
+      padding: clamp(24px, 6vw, 42px);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .prompt-label,
+    .answer-label {
+      margin: 0 0 10px;
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .symbol {
+      margin: 18px 0 0;
+      font-size: clamp(3rem, 13vw, 5.8rem);
+      font-weight: 850;
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      overflow-wrap: anywhere;
+    }
+
+    .answer-wrap {
+      min-height: 150px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 18px;
+      margin-top: 8px;
+    }
+
+    .number {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1;
+      border: 2px solid var(--text);
+      border-radius: 22px;
+      font-size: clamp(3.2rem, 15vw, 5.8rem);
+      font-weight: 850;
+      line-height: 1;
+      letter-spacing: -0.06em;
+    }
+
+    .separator {
+      font-size: clamp(2rem, 7vw, 3.2rem);
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .pair.hidden { visibility: hidden; }
+
+    button {
+      width: 100%;
+      min-height: 58px;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 18px;
+      background: var(--button);
+      color: var(--button-text);
+      font: inherit;
+      font-size: 1.05rem;
+      font-weight: 780;
+      cursor: pointer;
+      transition: transform 120ms ease, opacity 120ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.985); }
+    button:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+
+    .hint,
+    .nav {
+      margin: 14px 0 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .nav a {
+      color: inherit;
+      text-underline-offset: 3px;
+    }
+
+    @media (max-width: 430px) {
+      body { padding: 16px; }
+      .card { min-height: 330px; border-radius: 22px; }
+      .pair { gap: 12px; }
+      .number { border-radius: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Memorizzazione inversa</p>
+    <h1>EIDOS Trainer</h1>
+
+    <section class="card" aria-live="polite">
+      <div>
+        <p class="prompt-label">Simbolo</p>
+        <p class="symbol" id="symbol">Albero</p>
+      </div>
+
+      <div class="answer-wrap">
+        <p class="answer-label">Blocco · Posizione</p>
+        <div class="pair hidden" id="pair" aria-label="Coppia corretta">
+          <div class="number" id="blockNumber">1</div>
+          <div class="separator" aria-hidden="true">·</div>
+          <div class="number" id="itemNumber">1</div>
+        </div>
+      </div>
+    </section>
+
+    <button id="nextButton" type="button">Mostra coppia</button>
+    <p class="hint">Puoi usare anche Invio o la barra spaziatrice.</p>
+    <p class="nav"><a href="./">Vai al trainer coppia → simbolo</a></p>
+  </main>
+
+  <script>
+    const symbols = [
+      ["Albero", "Bilancia", "Chiave", "Dado", "Edificio"],
+      ["Farfalla", "Gladio", "Isola", "Luna", "Mano"],
+      ["Nuvola", "Occhio", "Penna", "Q-Cuore", "Re"],
+      ["Sole", "Teschio", "Uovo", "Vettore", "Z-Ruota"]
+    ];
+
+    const symbol = document.getElementById("symbol");
+    const pair = document.getElementById("pair");
+    const blockNumber = document.getElementById("blockNumber");
+    const itemNumber = document.getElementById("itemNumber");
+    const nextButton = document.getElementById("nextButton");
+
+    let showingAnswer = false;
+    let previousKey = null;
+
+    function randomIndex(max) {
+      return Math.floor(Math.random() * max);
+    }
+
+    function generateSymbol() {
+      let block;
+      let item;
+      let key;
+
+      do {
+        block = randomIndex(4);
+        item = randomIndex(5);
+        key = `${block}-${item}`;
+      } while (key === previousKey);
+
+      previousKey = key;
+      showingAnswer = false;
+
+      symbol.textContent = symbols[block][item];
+      blockNumber.textContent = String(block + 1);
+      itemNumber.textContent = String(item + 1);
+      pair.classList.add("hidden");
+      nextButton.textContent = "Mostra coppia";
+    }
+
+    function advance() {
+      if (!showingAnswer) {
+        showingAnswer = true;
+        pair.classList.remove("hidden");
+        nextButton.textContent = "Avanti";
+      } else {
+        generateSymbol();
+      }
+    }
+
+    nextButton.addEventListener("click", advance);
+
+    document.addEventListener("keydown", (event) => {
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault();
+        advance();
+      }
+    });
+
+    generateSymbol();
+  </script>
+</body>
+</html>
